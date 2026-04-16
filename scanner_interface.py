@@ -7,27 +7,38 @@ def activate_scanner():
     
     while True:
         ret, frame = cap.read()
+        if not ret:
+            continue
+
         for barcode in decode(frame):
+            # 1. Get raw text from QR
             raw_data = barcode.data.decode('utf-8').strip()
-            print(f"DEBUG: Scanned raw text -> '{raw_data}'") # This tells us exactly what's in the QR
+            print(f"DEBUG: Scanned raw text -> '{raw_data}'") 
             
             cap.release()
             cv2.destroyAllWindows()
             
-            # If your QR is "ID:1|Name:panel"
-            if "|" in raw_data and ":" in raw_data:
-                try:
+            # 2. Logic to clean the ID
+            try:
+                if "ART_NO:" in raw_data:
+                    # If QR is 'ART_NO:001', this gives us '001'
+                    clean_id = raw_data.split(":")[1].strip()
+                    print(f"✅ Cleaned Article ID: {clean_id}")
+                    return clean_id, "Linked_Part"
+                
+                elif "|" in raw_data:
+                    # Logic for old format 'ID:123|Name:panel'
                     parts = raw_data.split("|")
-                    p_id = parts[0].split(":")[1].strip()
-                    p_name = parts[1].split(":")[1].strip()
-                    return p_id, p_name
-                except Exception as e:
-                    print(f"❌ Formatting Error: {e}")
-                    return None, None
-            else:
-                # If your QR is JUST the ID (e.g., "1")
-                # We will use the raw data as ID and ask for a generic name
-                return raw_data, "Unidentified Part"
+                    clean_id = parts[0].split(":")[1].strip()
+                    return clean_id, "Linked_Part"
+                
+                else:
+                    # If QR is just raw text like '001'
+                    return raw_data, "Direct_ID"
+                    
+            except Exception as e:
+                print(f"❌ Error decoding QR format: {e}")
+                return None, None
             
         cv2.imshow('resQ Smart Scanner', frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):

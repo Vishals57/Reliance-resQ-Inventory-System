@@ -1,47 +1,20 @@
 import qrcode
-import cv2
-from pyzbar.pyzbar import decode
-import datetime
-import pandas as pd
+import os
 
-# 1. FUNCTION TO GENERATE QR CODE
-def generate_part_qr(part_id, part_name):
-    # Data to store inside the QR
-    data = f"ID:{part_id}|Name:{part_name}"
-    qr = qrcode.make(data)
-    file_name = f"QR_{part_id}.png"
-    qr.save(file_name)
-    print(f"✅ QR Code saved as {file_name}")
-
-# 2. FUNCTION TO SCAN AND UPDATE (Simulated In/Out)
-def scan_inventory(action="IN"):
-    cap = cv2.VideoCapture(0) # Opens your webcam
-    print(f"📷 Scanning for Part {action}... Press 'q' to stop.")
+def generate_article_qr(art_no, name):
+    # We store the Article No in the QR. 
+    # When scanned, the system pulls Name, CP, and SP from the Excel Master sheet.
+    data = f"ART_NO:{art_no}"
     
-    while True:
-        ret, frame = cap.read()
-        for barcode in decode(frame):
-            data = barcode.data.decode('utf-8')
-            print(f"✨ Scanned Data: {data}")
-            
-            # Log the movement
-            log_entry = {
-                "Timestamp": datetime.datetime.now(),
-                "Data": data,
-                "Type": action
-            }
-            print(f"📝 Recorded: {log_entry}")
-            
-            cap.release()
-            cv2.destroyAllWindows()
-            return log_entry
-            
-        cv2.imshow('Inventory Scanner', frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
-    cap.release()
-    cv2.destroyAllWindows()
-
-# --- EXAMPLE USAGE ---
-# generate_part_qr("RESQ-99", "Samsung-Display-Panel")
-# scan_inventory(action="OUT")
+    # Create folder for QRs if it doesn't exist
+    if not os.path.exists("Article_QRs"):
+        os.makedirs("Article_QRs")
+        
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(data)
+    qr.make(fit=True)
+    
+    img = qr.make_image(fill_color="black", back_color="white")
+    file_path = f"Article_QRs/QR_{art_no}.png"
+    img.save(file_path)
+    print(f"🖨️ QR Generated and saved at: {file_path}")
