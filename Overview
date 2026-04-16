@@ -1,0 +1,22 @@
+# resQ SmartTrack: Serialized Inventory System
+
+A Python-based inventory management solution designed for **Reliance resQ** service centers.
+
+## 🚀 Features
+- **Unique ID Tracking:** Every spare part has a unique Article Number to prevent duplicates.
+- **Shelf Management:** Updates existing rows in Excel instead of creating messy logs.
+- **GRN Integration:** Supports Local and Company (Original) purchase types.
+- **Engineer Allocation:** Assigns parts to specific engineers with auto-calculated charges.
+- **QR Automation:** Generates and scans QR codes using OpenCV and PyZbar.
+
+## 🛠️ Tech Stack
+- **Language:** Python 3.x
+- **Database:** Microsoft Excel (via Pandas & Openpyxl)
+- **Computer Vision:** OpenCV
+- **Hardware:** Standard Webcam for scanning
+
+## 📸 How to Use
+1. Run `python main.py`
+2. Register a new article.
+3. Inward the part using the generated QR.
+4. Issue it to an engineer via the menu.
