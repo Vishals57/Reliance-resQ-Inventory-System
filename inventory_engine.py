@@ -3,7 +3,7 @@ import os
 from datetime import datetime
 
 DB_FILE = "resQ_Enterprise_Inventory.xlsx"
-ENGINEERS = ["Rahul Sharma", "Amit Patil", "Vinay Deshmukh", "Suresh Kumar"]
+ENGINEERS = ["Yogesh Bhosale", "Sidram Battul", "Sham Kachi", "sameer shaikh", "Rajesh chavan", "Sahil Dighe", "Gajanan gawande", "Kiran misal", "kishor panchal", "Raju Yadav", "Lalemashak kunnure", "Faruk Shaikh", "Ashraf Momin", "Abhitabh Gupta", "Prahalad Yadav", "Abdul Rehman", "Ishwar Panchal", "Nagendra Yadav", "Pramod Valekar", "Rahim Dindore"]
 
 def initialize_db():
     """Creates the file with both sheets if it doesn't exist."""
