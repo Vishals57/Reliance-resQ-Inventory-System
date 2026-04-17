@@ -1,4 +1,4 @@
-📦 Reliance resQ Enterprise Inventory System v5.7
+      📦 Reliance resQ Enterprise Inventory System v5.7
 A professional-grade, dark-mode Desktop ERP application designed for high-pressure service center environments. This system automates the tracking of serialized spare parts, manages engineer assignments, and generates physical QR assets for warehouse management.
 
 🚀 Key Features
@@ -69,6 +69,3 @@ Track: Monitor all movements and charges in the Dashboard tab.
 
 👨‍💻 Developed By
 Vishal Sunil Shinde | Software Developer & Data Analyst at resQ
-
-## Why this project matters
-This isn't just a school project; it was developed to solve real-world inventory bottlenecks at a high-volume service center. It demonstrates proficiency in Full-Stack Desktop Development, Data Management, and UX Design.
