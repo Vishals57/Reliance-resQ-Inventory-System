@@ -26,9 +26,9 @@ def main():
             success, msg = engine.register_new_article(art_no, name, cp, sp, cat)
             print(msg)
             
-            # Step B: Generate the Physical QR Code
+            # Step B: Generate the Physical QR Code (single QR per Article_No)
             if success:
-                gen.generate_article_qr(art_no, name)
+                gen.generate_box_qr(art_no, name, "-", sp, 1, sr_list=None)
 
         elif choice == '2':
             # Scan the QR to get the Article Number
