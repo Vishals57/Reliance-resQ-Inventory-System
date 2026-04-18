@@ -48,12 +48,15 @@ def main():
             if art_no:
                 print(f"📦 Scanned Article: {art_no}")
                 print("\nSelect Engineer:")
-                for i, eng in enumerate(engine.ENGINEERS):
+                engineers = engine.get_engineer_names(active_only=True)
+                if not engineers:
+                    engineers = engine.ENGINEERS
+                for i, eng in enumerate(engineers):
                     print(f"{i+1}. {eng}")
                 
                 try:
                     eng_idx = int(input("Choice: ")) - 1
-                    engineer_name = engine.ENGINEERS[eng_idx]
+                    engineer_name = engineers[eng_idx]
                     _, msg = engine.process_movement(art_no, "OUT", engineer=engineer_name)
                     print(msg)
                 except (ValueError, IndexError):
