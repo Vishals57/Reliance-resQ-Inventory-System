@@ -3,7 +3,7 @@ A professional-grade, dark-mode Desktop ERP application designed for high-pressu
 
 🚀 Key Features
 🖥️ Modern Admin UI
-CustomTkinter Interface: Built with a Windows 11-style dark theme for a premium user experience.
+CustomTkinter Interface: Built with a Windows 11-style dark theme for a premium user experience. 
 
 Master-Detail Dashboard: Real-time synchronization between Master Stock and Live Transactions.
 
