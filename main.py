@@ -10,10 +10,11 @@ def main():
         print("1. Register New Article (Master Data)")
         print("2. Inward Purchase (GRN - Local/Company)")
         print("3. Outward to Engineer (Job Issue)")
-        print("4. Exit")
+        print("4. Backup Database")
+        print("5. Exit")
         
         # THIS LINE MUST BE HERE - Defining 'choice' before the IF statements
-        choice = input("Select Option (1-4): ")
+        choice = input("Select Option (1-5): ")
 
         if choice == '1':
             art_no = input("Article No: ")
@@ -65,6 +66,13 @@ def main():
                 print("⚠️ Scan Cancelled.")
 
         elif choice == '4':
+            ok, msg = engine.backup_database(include_qr_folder=True)
+            if ok:
+                print(f"✅ Backup created: {msg}")
+            else:
+                print(f"❌ Backup failed: {msg}")
+
+        elif choice == '5':
             print("Shutting down resQ SmartTrack. Goodbye!")
             break
         

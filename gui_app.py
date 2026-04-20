@@ -86,6 +86,18 @@ class ResQUltimateAdmin(ctk.CTk):
         self.create_nav_btn("📁", "Asset Manager")
         self.create_nav_btn("📋", "Billing / TCR")
 
+        # Backup/Export button always visible in sidebar
+        ctk.CTkButton(
+            self.sidebar,
+            text="💾",
+            width=65,
+            height=65,
+            fg_color="transparent",
+            font=("Arial", 26),
+            hover_color=self.colors["bg_tertiary"],
+            command=self.backup_data_ui,
+        ).pack(pady=12)
+
         # 5. Initialize Content
         self.init_dashboard_tab()
         self.init_operations_tab()
@@ -349,6 +361,30 @@ class ResQUltimateAdmin(ctk.CTk):
         ctk.CTkLabel(header, text="Dashboard", font=("Segoe UI", 24, "bold"), text_color=self.colors["text_primary"]).pack(side="left")
         ctk.CTkLabel(header, text="Real-time inventory overview", font=("Segoe UI", 12), text_color=self.colors["text_tertiary"]).pack(side="left", padx=(15, 0))
         
+        # Right-side buttons
+        btn_group = ctk.CTkFrame(header, fg_color="transparent")
+        btn_group.pack(side="right")
+        
+        ctk.CTkButton(
+            btn_group,
+            text="📐 Reformat Excel",
+            width=160,
+            height=36,
+            fg_color=self.colors["success"],
+            hover_color="#059669",
+            command=self.reformat_excel_ui,
+        ).pack(side="right", padx=(0, 10))
+        
+        ctk.CTkButton(
+            btn_group,
+            text="🔁 Backup Data",
+            width=140,
+            height=36,
+            fg_color=self.colors["accent"],
+            hover_color=self.colors["accent_hover"],
+            command=self.backup_data_ui,
+        ).pack(side="right")
+        
         # Stats Cards
         self.stats_frame = ctk.CTkFrame(self.t_dash, fg_color="transparent")
         self.stats_frame.pack(fill="x", padx=30, pady=(0, 20))
@@ -519,6 +555,57 @@ class ResQUltimateAdmin(ctk.CTk):
             command=self.edit_billing_selected,
         ).pack(side="right", padx=(0, 10))
 
+        # ===== TCR SEARCH SECTION =====
+        search_frame = ctk.CTkFrame(wrap, fg_color=self.colors["bg_secondary"], corner_radius=10)
+        search_frame.pack(fill="x", pady=(0, 14))
+        
+        # Header for search section
+        search_header = ctk.CTkFrame(search_frame, fg_color="transparent")
+        search_header.pack(fill="x", padx=15, pady=(12, 10))
+        ctk.CTkLabel(search_header, text="🔍 TCR Search Filters", font=("Segoe UI", 13, "bold"),
+                    text_color=self.colors["accent"]).pack(side="left")
+        
+        # First row: Search inputs
+        search_inputs = ctk.CTkFrame(search_frame, fg_color="transparent")
+        search_inputs.pack(fill="x", padx=15, pady=(0, 10))
+        
+        # Engineer search
+        ctk.CTkLabel(search_inputs, text="Engineer:", font=("Segoe UI", 10, "bold"),
+                    text_color=self.colors["text_secondary"]).pack(side="left", padx=(0, 5))
+        self.tcr_search_engineer = ctk.CTkEntry(search_inputs, placeholder_text="Search engineer name...",
+                                               height=32, width=180, fg_color=self.colors["bg_primary"])
+        self.tcr_search_engineer.pack(side="left", padx=(0, 15))
+        
+        # Article search
+        ctk.CTkLabel(search_inputs, text="Article No:", font=("Segoe UI", 10, "bold"),
+                    text_color=self.colors["text_secondary"]).pack(side="left", padx=(0, 5))
+        self.tcr_search_article = ctk.CTkEntry(search_inputs, placeholder_text="Search article code...",
+                                              height=32, width=180, fg_color=self.colors["bg_primary"])
+        self.tcr_search_article.pack(side="left", padx=(0, 15))
+        
+        # Status filter
+        ctk.CTkLabel(search_inputs, text="Status:", font=("Segoe UI", 10, "bold"),
+                    text_color=self.colors["text_secondary"]).pack(side="left", padx=(0, 5))
+        self.tcr_status_var = ctk.StringVar(value="ALL")
+        ctk.CTkSegmentedButton(
+            search_inputs,
+            values=["ALL", "OPEN", "IN_PROGRESS", "COMPLETED", "CLOSED"],
+            variable=self.tcr_status_var,
+            command=lambda: self.refresh_billing_tree(),
+            fg_color=self.colors["bg_tertiary"],
+            font=("Segoe UI", 9)
+        ).pack(side="left", padx=(0, 10))
+        
+        # Search button
+        ctk.CTkButton(search_inputs, text="🔎 SEARCH", width=120, height=32,
+                     fg_color=self.colors["accent"], hover_color=self.colors["accent_hover"],
+                     command=self.perform_tcr_search).pack(side="left", padx=(0, 5))
+        
+        # Clear button
+        ctk.CTkButton(search_inputs, text="✕ CLEAR", width=100, height=32,
+                     fg_color=self.colors["warning"], hover_color="#d97706",
+                     command=self.clear_tcr_search).pack(side="left")
+
         ctk.CTkLabel(
             wrap,
             text=(
@@ -587,6 +674,27 @@ class ResQUltimateAdmin(ctk.CTk):
         if df is None or df.empty:
             return
 
+        # Get search criteria
+        engineer_search = getattr(self, "tcr_search_engineer", None)
+        article_search = getattr(self, "tcr_search_article", None)
+        status_filter = getattr(self, "tcr_status_var", None)
+        
+        engineer_val = engineer_search.get().strip() if engineer_search else ""
+        article_val = article_search.get().strip() if article_search else ""
+        status_val = status_filter.get() if status_filter else "ALL"
+        
+        # Apply filters
+        if engineer_val or article_val or (status_val and status_val.upper() != "ALL"):
+            df = engine.filter_tcr_records(df, search_type=None, search_value=None, status_filter=status_val)
+            
+            if engineer_val:
+                df["Engineer_Name"] = df["Engineer_Name"].astype(str).str.strip()
+                df = df[df["Engineer_Name"].str.lower().str.contains(engineer_val.lower(), na=False)]
+            
+            if article_val:
+                df["Article_No"] = df["Article_No"].astype(str).str.strip()
+                df = df[df["Article_No"].str.contains(article_val, na=False)]
+        
         def _money_show(val):
             if val is True or str(val).strip().lower() in ("true", "1", "yes", "y", "received", "paid"):
                 return "Yes"
@@ -850,6 +958,39 @@ class ResQUltimateAdmin(ctk.CTk):
         else:
             messagebox.showerror("Error", msg)
 
+    # ===== TCR SEARCH METHODS =====
+    def perform_tcr_search(self):
+        """Perform TCR search based on selected filters"""
+        engineer_val = (self.tcr_search_engineer.get() or "").strip()
+        article_val = (self.tcr_search_article.get() or "").strip()
+        
+        # Trigger refresh with search criteria
+        self.refresh_billing_tree()
+        
+        # Show feedback
+        search_criteria = []
+        if engineer_val:
+            search_criteria.append(f"Engineer: {engineer_val}")
+        if article_val:
+            search_criteria.append(f"Article: {article_val}")
+        
+        status_val = (self.tcr_status_var.get() or "ALL").strip()
+        if status_val != "ALL":
+            search_criteria.append(f"Status: {status_val}")
+        
+        if search_criteria:
+            messagebox.showinfo("TCR Search", f"Searching for:\n• {chr(10).join(['• ' + c for c in search_criteria])}")
+        else:
+            messagebox.showinfo("TCR Search", "Showing all records.")
+
+    def clear_tcr_search(self):
+        """Clear all search filters and reset to show all records"""
+        self.tcr_search_engineer.delete(0, "end")
+        self.tcr_search_article.delete(0, "end")
+        self.tcr_status_var.set("ALL")
+        self.refresh_billing_tree()
+        messagebox.showinfo("Search Cleared", "All filters cleared. Showing all TCR records.")
+
     # --- 🔧 OPERATIONS ---
     def init_operations_tab(self):
         self.ops_split = ctk.CTkFrame(self.t_ops, fg_color="transparent")
@@ -1050,6 +1191,27 @@ class ResQUltimateAdmin(ctk.CTk):
             self.refresh_engineers()
         else:
             messagebox.showerror("Err", msg)
+
+    def backup_data_ui(self):
+        try:
+            ok, msg = engine.backup_database(include_qr_folder=True)
+            if ok:
+                messagebox.showinfo("Backup Created", f"Backup saved to:\n{msg}")
+            else:
+                messagebox.showerror("Backup Failed", msg)
+        except Exception as e:
+            messagebox.showerror("Backup Failed", str(e))
+
+    def reformat_excel_ui(self):
+        """Reformat Excel file with auto-sized columns"""
+        try:
+            ok, msg = engine.reformat_excel_file()
+            if ok:
+                messagebox.showinfo("Excel Reformatted", "✅ All columns have been auto-sized for better readability!\n\nYou can now open the Excel file to see the changes.")
+            else:
+                messagebox.showerror("Reformat Failed", msg)
+        except Exception as e:
+            messagebox.showerror("Reformat Failed", str(e))
 
     # --- CORE REFRESH LOGIC (THE FIX) ---
     def refresh_all_data(self):

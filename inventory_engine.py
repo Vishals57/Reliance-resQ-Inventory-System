@@ -1,9 +1,11 @@
 import pandas as pd
 import os
 import uuid
+import zipfile
 from datetime import datetime
 
 DB_FILE = "resQ_Enterprise_Inventory.xlsx"
+BACKUP_DIR = "Backups"
 # Backward compatible default list (used only to seed the Engineers sheet once).
 ENGINEERS = ["Yogesh Bhosale", "Sidram Battul", "Sham Kachi", "sameer shaikh", "Rajesh chavan", "Sahil Dighe", "Gajanan gawande", "Kiran misal", "kishor panchal", "Raju Yadav", "Lalemashak kunnure", "Faruk Shaikh", "Ashraf Momin", "Abhitabh Gupta", "Prahalad Yadav", "Abdul Rehman", "Ishwar Panchal", "Nagendra Yadav", "Pramod Valekar", "Rahim Dindore"]
 
@@ -100,6 +102,39 @@ def save_all_workbook(df_master: pd.DataFrame, df_trans: pd.DataFrame, df_eng=No
 
     apply_service_billing_green_rows()
     apply_excel_formatting()
+
+
+def _ensure_backup_dir() -> str:
+    """Ensure the backup directory exists and return its path."""
+    if not os.path.exists(BACKUP_DIR):
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+    return BACKUP_DIR
+
+
+def backup_database(include_qr_folder: bool = True):
+    """Create a timestamped ZIP backup of the database and optional QR assets."""
+    migrate_db()
+    if not os.path.exists(DB_FILE):
+        return False, "Database file not found."
+
+    backup_root = _ensure_backup_dir()
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_name = f"resQ_backup_{stamp}.zip"
+    backup_path = os.path.join(backup_root, backup_name)
+
+    try:
+        with zipfile.ZipFile(backup_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.write(DB_FILE, os.path.basename(DB_FILE))
+            if include_qr_folder and os.path.isdir("Box_QRs"):
+                for root, _, files in os.walk("Box_QRs"):
+                    for file in files:
+                        src_path = os.path.join(root, file)
+                        rel_path = os.path.relpath(src_path, os.path.dirname(DB_FILE) or ".")
+                        archive.write(src_path, rel_path)
+
+        return True, backup_path
+    except Exception as exc:
+        return False, f"Backup failed: {exc}"
 
 
 def _ensure_eng_schema(df: pd.DataFrame) -> pd.DataFrame:
@@ -205,13 +240,24 @@ def apply_excel_formatting():
         for column_cells in ws.columns:
             max_length = 0
             column_letter = column_cells[0].column_letter
-            for cell in column_cells:
+            
+            # Start with header width
+            header_cell = ws[f'{column_letter}1']
+            if header_cell.value is not None:
+                max_length = len(str(header_cell.value)) + 2  # Add padding for header
+            
+            # Check all content in column
+            for cell in column_cells[1:]:  # Skip header
                 if cell.value is None:
                     continue
-                value_length = len(str(cell.value))
+                value_str = str(cell.value).strip()
+                value_length = len(value_str)
                 if value_length > max_length:
                     max_length = value_length
-            adjusted_width = min(max(10, max_length + 2), 40)
+            
+            # Calculate final width with better padding and min/max
+            # Min 12, Max 50 to ensure all text is visible
+            adjusted_width = min(max(12, max_length + 3), 50)
             ws.column_dimensions[column_letter].width = adjusted_width
 
     try:
@@ -959,3 +1005,146 @@ def process_movement(art_no, movement_type, purchase_type="Company", engineer=No
 
     save_all_workbook(df_master, df_trans, df_eng, df_jobs)
     return True, msg
+
+
+# ===== TCR TRACKING SEARCH FUNCTIONS =====
+
+def search_tcr_by_engineer(engineer_name: str):
+    """
+    Search TCR records by engineer name.
+    Returns both complete (TCR filled) and incomplete (no TCR) records for the engineer.
+    """
+    migrate_db()
+    engineer_name = str(engineer_name).strip()
+    
+    try:
+        df_jobs = _read_sheet_df(SERVICE_JOB_SHEET, SERVICE_JOB_COLUMNS)
+    except Exception:
+        return pd.DataFrame(columns=SERVICE_JOB_COLUMNS)
+    
+    if df_jobs.empty:
+        return pd.DataFrame(columns=SERVICE_JOB_COLUMNS)
+    
+    # Case-insensitive search
+    df_jobs["Engineer_Name"] = df_jobs["Engineer_Name"].astype(str).str.strip()
+    mask = df_jobs["Engineer_Name"].str.lower() == engineer_name.lower()
+    
+    result = df_jobs[mask].copy()
+    # Sort by creation date, newest first
+    result = result.sort_values("Created_At", ascending=False, na_position="last")
+    
+    return result
+
+
+def search_tcr_by_article(article_no: str):
+    """
+    Search TCR records by article number.
+    Returns both complete and incomplete engineer parts list for the article.
+    """
+    migrate_db()
+    article_no = str(article_no).strip()
+    
+    try:
+        df_jobs = _read_sheet_df(SERVICE_JOB_SHEET, SERVICE_JOB_COLUMNS)
+    except Exception:
+        return pd.DataFrame(columns=SERVICE_JOB_COLUMNS)
+    
+    if df_jobs.empty:
+        return pd.DataFrame(columns=SERVICE_JOB_COLUMNS)
+    
+    # Search by article number
+    df_jobs["Article_No"] = df_jobs["Article_No"].astype(str).str.strip()
+    mask = df_jobs["Article_No"] == article_no
+    
+    result = df_jobs[mask].copy()
+    # Sort by engineer name then by creation date
+    result = result.sort_values(["Engineer_Name", "Created_At"], ascending=[True, False])
+    
+    return result
+
+
+def search_tcr_by_artcode(art_code: str):
+    """
+    Search TCR records by article code (Art Code).
+    Returns list of both complete and incomplete engineer parts.
+    Art Code is the article number identifier used in the system.
+    """
+    # Art code is essentially the Article_No, so use the same logic
+    return search_tcr_by_article(art_code)
+
+
+def filter_tcr_records(df_jobs: pd.DataFrame, search_type: str = None, search_value: str = None, status_filter: str = "ALL"):
+    """
+    Filter TCR records with optional search and status filtering.
+    
+    search_type: 'engineer', 'article', 'artcode', or None
+    search_value: the value to search for
+    status_filter: 'ALL', 'OPEN', 'IN_PROGRESS', 'COMPLETED', 'CLOSED'
+    """
+    if df_jobs is None or df_jobs.empty:
+        return pd.DataFrame(columns=SERVICE_JOB_COLUMNS)
+    
+    result = df_jobs.copy()
+    
+    # Apply search filter
+    if search_type and search_value:
+        search_value = str(search_value).strip()
+        
+        if search_type.lower() == "engineer":
+            result["Engineer_Name"] = result["Engineer_Name"].astype(str).str.strip()
+            result = result[result["Engineer_Name"].str.lower().str.contains(search_value.lower(), na=False)]
+        
+        elif search_type.lower() == "article":
+            result["Article_No"] = result["Article_No"].astype(str).str.strip()
+            result = result[result["Article_No"].str.contains(search_value, na=False)]
+        
+        elif search_type.lower() == "artcode":
+            result["Article_No"] = result["Article_No"].astype(str).str.strip()
+            result = result[result["Article_No"].str.contains(search_value, na=False)]
+    
+    # Apply status filter
+    if status_filter and status_filter.upper() != "ALL":
+        result["Status"] = result["Status"].astype(str).str.strip().str.upper()
+        result = result[result["Status"] == status_filter.upper()]
+    
+    # Sort by creation date, newest first
+    result = result.sort_values("Created_At", ascending=False, na_position="last")
+    
+    return result
+
+
+def get_tcr_completion_stats(df_jobs: pd.DataFrame = None):
+    """
+    Get statistics about TCR completion status.
+    Returns a dictionary with counts of different statuses.
+    """
+    if df_jobs is None:
+        try:
+            df_jobs = _read_sheet_df(SERVICE_JOB_SHEET, SERVICE_JOB_COLUMNS)
+        except Exception:
+            return {"total": 0, "OPEN": 0, "IN_PROGRESS": 0, "COMPLETED": 0, "CLOSED": 0}
+    
+    if df_jobs.empty:
+        return {"total": 0, "OPEN": 0, "IN_PROGRESS": 0, "COMPLETED": 0, "CLOSED": 0}
+    
+    df_jobs["Status"] = df_jobs["Status"].astype(str).str.strip().str.upper()
+    
+    stats = {
+        "total": len(df_jobs),
+        "OPEN": int((df_jobs["Status"] == "OPEN").sum()),
+        "IN_PROGRESS": int((df_jobs["Status"] == "IN_PROGRESS").sum()),
+        "COMPLETED": int((df_jobs["Status"] == "COMPLETED").sum()),
+        "CLOSED": int((df_jobs["Status"] == "CLOSED").sum()),
+    }
+    
+    return stats
+
+
+def reformat_excel_file():
+    """
+    Reformat the Excel file with auto-sized columns and professional formatting.
+    Can be called anytime to improve readability.
+    """
+    migrate_db()
+    apply_excel_formatting()
+    return True, "✅ Excel file reformatted with auto-sized columns."
