@@ -1395,6 +1395,7 @@ def filter_tcr_records(df_jobs: pd.DataFrame, search_type: str = None, search_va
     return result
 
 
+
 def get_tcr_completion_stats(df_jobs: pd.DataFrame = None):
     """
     Get statistics about TCR completion status.
