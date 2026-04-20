@@ -1,6 +1,6 @@
 import customtkinter as ctk
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 from customtkinter import CTkInputDialog
 import inventory_engine as engine
 import scanner_interface as scanner
@@ -97,6 +97,7 @@ class ResQUltimateAdmin(ctk.CTk):
             hover_color=self.colors["bg_tertiary"],
             command=self.backup_data_ui,
         ).pack(pady=12)
+        ctk.CTkLabel(self.sidebar, text="v5.8", font=("Segoe UI", 10), text_color=self.colors["text_tertiary"]).pack(side="bottom", pady=(0, 20))
 
         # 5. Initialize Content
         self.init_dashboard_tab()
@@ -327,13 +328,17 @@ class ResQUltimateAdmin(ctk.CTk):
 
     def create_nav_btn(self, icon, name):
         btn = ctk.CTkButton(
-            self.sidebar, 
-            text=icon, 
-            width=65, 
-            height=65, 
-            fg_color="transparent",
-            font=("Arial", 26),
+            self.sidebar,
+            text=icon,
+            width=70,
+            height=70,
+            fg_color=self.colors["bg_secondary"],
+            text_color=self.colors["text_primary"],
             hover_color=self.colors["bg_tertiary"],
+            border_width=1,
+            border_color=self.colors["bg_tertiary"],
+            corner_radius=20,
+            font=("Arial", 26),
             command=lambda: self._set_tab(name)
         )
         btn.pack(pady=12)
@@ -349,9 +354,9 @@ class ResQUltimateAdmin(ctk.CTk):
         current = self.tabs.get()
         for name, btn in self.nav_btns.items():
             if name == current:
-                btn.configure(fg_color=self.colors["accent"])
+                btn.configure(fg_color=self.colors["accent"], text_color="#ffffff", border_color=self.colors["accent"], border_width=1)
             else:
-                btn.configure(fg_color="transparent")
+                btn.configure(fg_color=self.colors["bg_secondary"], text_color=self.colors["text_primary"], border_color=self.colors["bg_tertiary"], border_width=1)
 
     # --- 📊 DASHBOARD TAB ---
     def init_dashboard_tab(self):
@@ -386,15 +391,15 @@ class ResQUltimateAdmin(ctk.CTk):
         ).pack(side="right")
         
         # Stats Cards
-        self.stats_frame = ctk.CTkFrame(self.t_dash, fg_color="transparent")
-        self.stats_frame.pack(fill="x", padx=30, pady=(0, 20))
+        self.stats_frame = ctk.CTkFrame(self.t_dash, fg_color=self.colors["bg_secondary"], corner_radius=20)
+        self.stats_frame.pack(fill="x", padx=30, pady=(0, 20), ipady=10, ipadx=10)
 
         self.val_card = self.create_stat_card(self.stats_frame, "💰", "TOTAL VALUE", "₹ 0.00", self.colors["accent"])
         self.cnt_card = self.create_stat_card(self.stats_frame, "📦", "TOTAL ITEMS", "0", self.colors["success"])
 
         # Right-side dashboard options
         self.dash_opts = ctk.CTkFrame(self.stats_frame, fg_color="transparent")
-        self.dash_opts.pack(side="right", padx=10)
+        self.dash_opts.pack(side="right", padx=10, pady=8)
         self.highlight_closed_var = ctk.BooleanVar(value=True)
         ctk.CTkSwitch(
             self.dash_opts,
@@ -406,11 +411,12 @@ class ResQUltimateAdmin(ctk.CTk):
         ).pack(pady=(28, 0))
 
         # Search + filter
-        search_frame = ctk.CTkFrame(self.dash_opts, fg_color="transparent")
+        search_frame = ctk.CTkFrame(self.dash_opts, fg_color=self.colors["bg_tertiary"], corner_radius=14)
         search_frame.pack(pady=(10, 0), fill="x")
-        ctk.CTkLabel(search_frame, text="🔍", font=("Arial", 14), text_color=self.colors["text_tertiary"]).pack(side="left", padx=(0, 8))
-        self.dash_search = ctk.CTkEntry(search_frame, placeholder_text="Search (ID / Item / Engineer)", height=32)
-        self.dash_search.pack(side="left", fill="x", expand=True)
+        search_frame.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(search_frame, text="🔍", font=("Arial", 14), text_color=self.colors["text_tertiary"]).grid(row=0, column=0, padx=(12, 10), pady=10)
+        self.dash_search = ctk.CTkEntry(search_frame, placeholder_text="Search (ID / Item / Engineer)", height=36)
+        self.dash_search.grid(row=0, column=1, sticky="ew", padx=(0, 12), pady=10)
         self.dash_search.bind("<KeyRelease>", lambda _e: self.refresh_all_data())
 
         filter_frame = ctk.CTkFrame(self.dash_opts, fg_color="transparent")
@@ -548,6 +554,15 @@ class ResQUltimateAdmin(ctk.CTk):
         ).pack(side="right")
         ctk.CTkButton(
             top,
+            text="Generate Invoice",
+            width=150,
+            height=34,
+            fg_color="#2563eb",
+            hover_color="#1d4ed8",
+            command=self.generate_engineer_invoice_pdf,
+        ).pack(side="right", padx=(0, 10))
+        ctk.CTkButton(
+            top,
             text="Edit selected",
             width=120,
             height=34,
@@ -556,18 +571,18 @@ class ResQUltimateAdmin(ctk.CTk):
         ).pack(side="right", padx=(0, 10))
 
         # ===== TCR SEARCH SECTION =====
-        search_frame = ctk.CTkFrame(wrap, fg_color=self.colors["bg_secondary"], corner_radius=10)
-        search_frame.pack(fill="x", pady=(0, 14))
+        search_frame = ctk.CTkFrame(wrap, fg_color=self.colors["bg_tertiary"], corner_radius=16)
+        search_frame.pack(fill="x", padx=20, pady=(0, 14))
         
         # Header for search section
         search_header = ctk.CTkFrame(search_frame, fg_color="transparent")
-        search_header.pack(fill="x", padx=15, pady=(12, 10))
+        search_header.pack(fill="x", padx=20, pady=(12, 10))
         ctk.CTkLabel(search_header, text="🔍 TCR Search Filters", font=("Segoe UI", 13, "bold"),
                     text_color=self.colors["accent"]).pack(side="left")
         
         # First row: Search inputs
         search_inputs = ctk.CTkFrame(search_frame, fg_color="transparent")
-        search_inputs.pack(fill="x", padx=15, pady=(0, 10))
+        search_inputs.pack(fill="x", padx=20, pady=(0, 10))
         
         # Engineer search
         ctk.CTkLabel(search_inputs, text="Engineer:", font=("Segoe UI", 10, "bold"),
@@ -619,8 +634,8 @@ class ResQUltimateAdmin(ctk.CTk):
             justify="left",
         ).pack(anchor="w", pady=(0, 14))
 
-        tree_frame = ctk.CTkFrame(wrap, fg_color=self.colors["bg_secondary"], corner_radius=12)
-        tree_frame.pack(fill="both", expand=True)
+        tree_frame = ctk.CTkFrame(wrap, fg_color=self.colors["bg_secondary"], corner_radius=16)
+        tree_frame.pack(fill="both", expand=True, padx=20, pady=(0, 10))
 
         cols = (
             "Sr",
@@ -991,6 +1006,45 @@ class ResQUltimateAdmin(ctk.CTk):
         self.refresh_billing_tree()
         messagebox.showinfo("Search Cleared", "All filters cleared. Showing all TCR records.")
 
+    def generate_engineer_invoice_pdf(self):
+        selected = self.billing_tree.selection()
+        engineer_name = ""
+
+        if selected:
+            row_id = str(selected[0]).strip()
+            if row_id:
+                df = engine.get_service_jobs()
+                if df is not None and not df.empty:
+                    row = df[df["Row_ID"].astype(str).str.strip() == row_id]
+                    if not row.empty:
+                        engineer_name = str(row.iloc[0].get("Engineer_Name", "") or "").strip()
+
+        if not engineer_name:
+            engineer_name = (self.tcr_search_engineer.get() or "").strip()
+
+        if not engineer_name:
+            dialog = CTkInputDialog(text="Enter engineer name for the invoice", title="Generate Invoice PDF")
+            engineer_name = str(dialog.get_input() or "").strip()
+
+        if not engineer_name:
+            return messagebox.showwarning("Invoice PDF", "Engineer name is required to generate the invoice.")
+
+        default_name = f"Invoice_{engineer_name.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
+        path = filedialog.asksaveasfilename(
+            defaultextension=".pdf",
+            filetypes=[("PDF files", "*.pdf")],
+            initialfile=default_name,
+            title="Save Engineer Invoice PDF",
+        )
+        if not path:
+            return
+
+        ok, result = engine.generate_engineer_invoice_pdf(engineer_name, path)
+        if ok:
+            messagebox.showinfo("Invoice PDF", f"Invoice saved to:\n{result}")
+        else:
+            messagebox.showerror("Invoice PDF", result)
+
     # --- 🔧 OPERATIONS ---
     def init_operations_tab(self):
         self.ops_split = ctk.CTkFrame(self.t_ops, fg_color="transparent")
@@ -1036,9 +1090,12 @@ class ResQUltimateAdmin(ctk.CTk):
         self.v_inv = _row(4, "Invoice No", "📄")
         self.v_sp = _row(5, "Selling Price", "💵")
 
-        actions = ctk.CTkFrame(self.scan_pnl, fg_color="transparent")
+        actions = ctk.CTkFrame(self.scan_pnl, fg_color=self.colors["bg_tertiary"], corner_radius=16)
         actions.grid(row=2, column=0, sticky="ew", padx=25, pady=(0, 20))
         actions.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(actions, text="Scan & move parts quickly", font=("Segoe UI", 12, "bold"), text_color=self.colors["text_primary"]).grid(row=0, column=0, sticky="w", padx=18, pady=(16, 8))
+        ctk.CTkLabel(actions, text="Use the camera to scan article QR codes and instantly issue or return items.", font=("Segoe UI", 10), text_color=self.colors["text_tertiary"], wraplength=520, justify="left").grid(row=1, column=0, sticky="w", padx=18)
 
         ctk.CTkButton(
             actions, 
@@ -1046,22 +1103,26 @@ class ResQUltimateAdmin(ctk.CTk):
             height=52, 
             fg_color=self.colors["accent"],
             hover_color=self.colors["accent_hover"],
+            corner_radius=14,
             command=self.run_scan
-        ).grid(row=0, column=0, sticky="ew")
+        ).grid(row=2, column=0, sticky="ew", padx=18, pady=(16, 0))
 
         move_label = ctk.CTkLabel(actions, text="Purchase Type:", font=("Segoe UI", 11, "bold"), text_color=self.colors["text_secondary"])
-        move_label.grid(row=1, column=0, sticky="w", pady=(12, 6))
+        move_label.grid(row=3, column=0, sticky="w", padx=18, pady=(16, 6))
         
         self.move_type_var = ctk.StringVar(value="Company")
         ctk.CTkSegmentedButton(
             actions, 
             values=["🏢 Company", "🏪 Local"], 
             variable=self.move_type_var,
-            fg_color=self.colors["bg_tertiary"]
-        ).grid(row=2, column=0, sticky="ew")
+            fg_color=self.colors["bg_secondary"],
+            selected_color=self.colors["accent"],
+            text_color=self.colors["text_primary"],
+            corner_radius=14,
+        ).grid(row=4, column=0, sticky="ew", padx=18)
 
         btn_row = ctk.CTkFrame(actions, fg_color="transparent")
-        btn_row.grid(row=3, column=0, sticky="ew", pady=(12, 0))
+        btn_row.grid(row=5, column=0, sticky="ew", pady=(18, 0), padx=18)
         btn_row.grid_columnconfigure(0, weight=1)
         btn_row.grid_columnconfigure(1, weight=1)
         ctk.CTkButton(
@@ -1082,14 +1143,14 @@ class ResQUltimateAdmin(ctk.CTk):
         ).grid(row=0, column=1, sticky="ew", padx=(8, 0))
 
         quick = ctk.CTkFrame(actions, fg_color="transparent")
-        quick.grid(row=4, column=0, sticky="ew", pady=(10, 0))
+        quick.grid(row=6, column=0, sticky="ew", pady=(10, 18), padx=18)
         quick.grid_columnconfigure(0, weight=1)
         quick.grid_columnconfigure(1, weight=1)
-        ctk.CTkButton(quick, text="🧹 CLEAR", height=38, fg_color=self.colors["bg_tertiary"], hover_color="#2d2d35", command=self.clear_scan).grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        ctk.CTkButton(quick, text="🖨️ REPRINT QR", height=38, fg_color=self.colors["bg_tertiary"], hover_color="#2d2d35", command=self.direct_print_qr).grid(row=0, column=1, sticky="ew", padx=(8, 0))
+        ctk.CTkButton(quick, text="🧹 CLEAR", height=42, fg_color=self.colors["bg_secondary"], hover_color="#2d2d35", corner_radius=14, command=self.clear_scan).grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        ctk.CTkButton(quick, text="🖨️ REPRINT QR", height=42, fg_color=self.colors["bg_secondary"], hover_color="#2d2d35", corner_radius=14, command=self.direct_print_qr).grid(row=0, column=1, sticky="ew", padx=(8, 0))
         
-        self.eng_wrap = ctk.CTkFrame(self.ops_split, width=350, fg_color=self.colors["bg_secondary"], corner_radius=12)
-        self.eng_wrap.pack(side="right", fill="y", padx=20, pady=20)
+        self.eng_wrap = ctk.CTkFrame(self.ops_split, width=350, fg_color=self.colors["bg_secondary"], corner_radius=20)
+        self.eng_wrap.pack(side="right", fill="both", padx=20, pady=20)
 
         eng_hdr = ctk.CTkFrame(self.eng_wrap, fg_color="transparent")
         eng_hdr.pack(fill="x", pady=(20, 8), padx=20)
@@ -1101,7 +1162,7 @@ class ResQUltimateAdmin(ctk.CTk):
         self.eng_search.pack(fill="x", padx=20, pady=(0, 12))
         self.eng_search.bind("<KeyRelease>", lambda _e: self.refresh_engineers())
 
-        self.eng_pnl = ctk.CTkScrollableFrame(self.eng_wrap, label_text="📋 Select Engineer", fg_color=self.colors["bg_tertiary"])
+        self.eng_pnl = ctk.CTkScrollableFrame(self.eng_wrap, label_text="📋 Select Engineer", fg_color=self.colors["bg_secondary"], corner_radius=16)
         self.eng_pnl.pack(fill="both", expand=True, padx=20, pady=(0, 20))
         self.eng_btns = {}
         self.refresh_engineers()

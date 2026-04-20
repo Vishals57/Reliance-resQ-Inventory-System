@@ -1,5 +1,6 @@
 import pandas as pd
 import os
+import io
 import uuid
 import zipfile
 from datetime import datetime
@@ -607,6 +608,287 @@ def get_engineers(active_only: bool = True):
 
 def get_engineer_names(active_only: bool = True):
     return [e["Engineer_Name"] for e in get_engineers(active_only=active_only)]
+
+
+def _pdf_escape(text: str) -> str:
+    s = str(text or "")
+    s = s.replace("\\", "\\\\")
+    s = s.replace("(", "\\(")
+    s = s.replace(")", "\\)")
+    s = s.replace("\r", " ")
+    s = s.replace("\n", " ")
+    try:
+        s = s.encode("latin1").decode("latin1")
+    except UnicodeEncodeError:
+        s = s.encode("latin1", "replace").decode("latin1")
+    return s
+
+
+def _wrap_text(text: str, width: int = 88):
+    words = str(text or "").split()
+    if not words:
+        return [""]
+    lines = []
+    current = words[0]
+    for word in words[1:]:
+        if len(current) + 1 + len(word) <= width:
+            current += " " + word
+        else:
+            lines.append(current)
+            current = word
+    lines.append(current)
+    return lines
+
+
+def _pdf_mono(text: str, width: int):
+    s = str(text or "")
+    if len(s) > width:
+        return s[:width-1] + "…"
+    return s.ljust(width)
+
+
+def _pdf_money(value):
+    if value is None:
+        return "-"
+    text = str(value).strip()
+    if text == "" or text.lower() in ("nan", "none"):
+        return "-"
+    try:
+        return f"₹{float(text):,.2f}"
+    except Exception:
+        return text
+
+
+def _format_money(value):
+    if value is None:
+        return "-"
+    text = str(value).strip()
+    if text == "" or text.lower() in ("nan", "none"):
+        return "-"
+    try:
+        return f"₹{float(text):,.2f}"
+    except Exception:
+        return text
+
+
+def _safe_filename(value: str) -> str:
+    name = str(value or "").strip()
+    safe = "".join([c if c.isalnum() or c in "-_ ." else "_" for c in name])
+    return safe.replace(" ", "_") or "invoice"
+
+
+def get_engineer_invoice_data(engineer_name: str):
+    """Return invoice data for an engineer based on Transactions and Service_Billing."""
+    migrate_db()
+    engineer_name = str(engineer_name or "").strip()
+    if not engineer_name:
+        return None
+
+    df_trans = _read_sheet_df("Transactions", TRANSACTION_COLUMNS)
+    df_jobs = _read_sheet_df(SERVICE_JOB_SHEET, SERVICE_JOB_COLUMNS)
+    df_master = _read_sheet_df("Master", MASTER_COLUMNS)
+
+    df_trans["Engineer"] = df_trans["Engineer"].astype(str).str.strip()
+    df_jobs["Engineer_Name"] = df_jobs["Engineer_Name"].astype(str).str.strip()
+
+    purchases = df_trans[df_trans["Engineer"].str.lower() == engineer_name.lower()].copy()
+    purchases = purchases.sort_values(by=["Date", "Sr_No"], ascending=[False, True])
+
+    open_jobs = df_jobs[df_jobs["Engineer_Name"].str.lower() == engineer_name.lower()].copy()
+    open_jobs["Status"] = open_jobs["Status"].astype(str).str.strip()
+
+    purchase_rows = []
+    for _, row in purchases.iterrows():
+        art = str(row.get("Article_No", "") or "").strip()
+        master = df_master[df_master["Article_No"].astype(str).str.strip().str.lower() == art.lower()]
+        part_name = str(master.iloc[0].get("Part_Name", "") if not master.empty else "").strip()
+        purchase_rows.append({
+            "Article_No": art,
+            "Part_Name": part_name,
+            "Purchase_Type": str(row.get("Purchase_Type", "") or "").strip(),
+            "Tax_Invoice_No": str(row.get("Tax_Invoice_No", "") or "").strip(),
+            "Charges": _format_money(row.get("Charges", "")),
+            "Sr_No": str(row.get("Sr_No", "") or "").strip(),
+            "Qty": str(row.get("Quantity", "") or "").strip() if "Quantity" in row else "-",
+            "In_Date": str(row.get("In_Date", "") or "").strip(),
+            "Out_Date": str(row.get("Out_Date", "") or "").strip(),
+            "Status": str(row.get("Status", "") or "").strip(),
+        })
+    job_rows = []
+    for _, row in open_jobs.iterrows():
+        job_rows.append({
+            "Article_No": str(row.get("Article_No", "") or "").strip(),
+            "Part_Sr_No": str(row.get("Part_Sr_No", "") or "").strip(),
+            "Part_Name": str(row.get("Part_Name_Part_No", "") or "").strip(),
+            "Description": str(row.get("Material_Description", "") or "").strip(),
+            "Quantity": str(row.get("Quantity", "") or "").strip(),
+            "Unit_Price": _format_money(row.get("MRP_Product_Price", "")),
+            "CGST": str(row.get("CGST", "") or "").strip(),
+            "SGST": str(row.get("SGST", "") or "").strip(),
+            "Status": str(row.get("Status", "") or "").strip(),
+            "Job_Invoice": str(row.get("Job_Card_Invoice_No", "") or "").strip(),
+            "TCR_No": str(row.get("TCR_No", "") or "").strip(),
+            "Money_Received": str(row.get("Money_Received", "") or "").strip(),
+        })
+
+    return {
+        "Engineer_Name": engineer_name,
+        "Generated_At": datetime.now().strftime("%d-%b-%Y %H:%M"),
+        "Purchase_Rows": purchase_rows,
+        "Job_Rows": job_rows,
+    }
+
+
+def _build_pdf_bytes(lines):
+    # Low-level PDF writer for a simple multi-page invoice.
+    page_width = 595
+    page_height = 842
+    margin_left = 50
+    margin_top = 800
+    line_height = 16
+    max_lines = int((margin_top - 50) / line_height)
+    pages = [lines[i:i + max_lines] for i in range(0, len(lines), max_lines)]
+
+    pdf = b"%PDF-1.4\n%\xE2\xE3\xCF\xD3\n"
+    objects = []
+
+    # Font object id 1 (monospaced Courier for box layout)
+    objects.append((1, b"<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>\n"))
+
+    page_content_ids = []
+    page_dict_ids = []
+    for idx, page_lines in enumerate(pages, start=1):
+        content_stream = ["BT", "/F1 12 Tf", f"{margin_left} {margin_top} Td"]
+        for line_index, text in enumerate(page_lines):
+            if line_index > 0:
+                content_stream.append("0 -16 Td")
+            content_stream.append(f"({_pdf_escape(text)}) Tj")
+        content_stream.append("ET")
+        stream_bytes = b"\n".join([s.encode("latin1") for s in content_stream])
+        stream_obj = b"<< /Length %d >>\nstream\n" % len(stream_bytes) + stream_bytes + b"\nendstream\n"
+        content_id = 1 + idx * 2
+        page_id = content_id + 1
+        page_content_ids.append(content_id)
+        page_dict_ids.append(page_id)
+        objects.append((content_id, stream_obj))
+        page_dict = (
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {page_width} {page_height}] /Contents {content_id} 0 R /Resources << /Font << /F1 1 0 R >> >> >>\n"
+        ).encode("latin1")
+        objects.append((page_id, page_dict))
+
+    # Pages object id 2
+    kids = b" ".join([f"{pid} 0 R".encode("latin1") for pid in page_dict_ids])
+    pages_obj = b"<< /Type /Pages /Kids [" + kids + b"] /Count %d >>\n" % len(page_dict_ids)
+    objects.insert(1, (2, pages_obj))
+
+    catalog_id = 3 + len(page_dict_ids) * 2
+    catalog_obj = b"<< /Type /Catalog /Pages 2 0 R >>\n"
+    objects.append((catalog_id, catalog_obj))
+
+    # Write objects in order
+    offsets = [0] * (catalog_id + 1)
+    for obj_id, body in sorted(objects, key=lambda o: o[0]):
+        offsets[obj_id] = len(pdf)
+        pdf += f"{obj_id} 0 obj\n".encode("latin1") + body + b"endobj\n"
+
+    xref_offset = len(pdf)
+    pdf += b"xref\n0 %d\n" % (len(offsets))
+    pdf += b"0000000000 65535 f \n"
+    for obj_id in range(1, len(offsets)):
+        pdf += b"%010d 00000 n \n" % offsets[obj_id]
+    pdf += b"trailer\n<< /Size %d /Root %d 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(offsets), catalog_id, xref_offset)
+    return pdf
+
+
+def generate_engineer_invoice_pdf(engineer_name: str, output_path: str = None):
+    """Generate a simple PDF invoice for an engineer and save it to disk."""
+    data = get_engineer_invoice_data(engineer_name)
+    if not data:
+        return False, "No engineer name provided or no matching records found."
+
+    if not output_path:
+        invoices_dir = os.path.join(os.getcwd(), "Invoices")
+        os.makedirs(invoices_dir, exist_ok=True)
+        safe_name = _safe_filename(engineer_name)
+        output_path = os.path.join(invoices_dir, f"Invoice_{safe_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf")
+    else:
+        os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+
+    lines = []
+    lines.append("+------------------------------------------------------------------------+")
+    lines.append("| resQ Enterprise - Engineer Invoice                                    |")
+    lines.append("+------------------------------------------------------------------------+")
+    lines.append(f"| Engineer: {_pdf_mono(data['Engineer_Name'], 56)} |")
+    lines.append(f"| Generated: {_pdf_mono(data['Generated_At'], 56)} |")
+    lines.append("+------------------------------------------------------------------------+")
+    lines.append("")
+
+    purchases = data.get("Purchase_Rows", [])
+    if purchases:
+        lines.append("+------------------------------------------------------------------------+")
+        lines.append("| Purchased items from us:                                              |")
+        lines.append("+--------+----------------+----------+------------+-----+-----------+--------+")
+        lines.append("| Article | Part           | Type     | Invoice    | Sr  | Charges   | Status |")
+        lines.append("+--------+----------------+----------+------------+-----+-----------+--------+")
+        for row in purchases:
+            article = _pdf_mono(row["Article_No"], 6)
+            part_name = _pdf_mono(row["Part_Name"], 14)
+            ptype = _pdf_mono(row["Purchase_Type"], 8)
+            invoice_no = _pdf_mono(row["Tax_Invoice_No"], 10)
+            sr = _pdf_mono(row["Sr_No"], 3)
+            charges = _pdf_mono(row["Charges"], 9)
+            status = _pdf_mono(row["Status"], 6)
+            lines.append(f"| {article} | {part_name} | {ptype} | {invoice_no} | {sr} | {charges} | {status} |")
+        lines.append("+--------+----------------+----------+------------+-----+-----------+--------+")
+    else:
+        lines.append("No purchase transactions found for this engineer.")
+    lines.append("")
+
+    jobs = data.get("Job_Rows", [])
+    if jobs:
+        open_jobs = [j for j in jobs if j["Status"].upper() != "CLOSED"]
+        if open_jobs:
+            lines.append("+------------------------------------------------------------------------+")
+            lines.append("| Open / active service parts:                                         |")
+            lines.append("+--------+----------------+-----+------------+--------+-----------+-----------+")
+            lines.append("| Article | Part           | Qty | Unit Price | Status | TCR       | Invoice   |")
+            lines.append("+--------+----------------+-----+------------+--------+-----------+-----------+")
+            for row in open_jobs:
+                article = _pdf_mono(row["Article_No"], 6)
+                part_name = _pdf_mono(row["Part_Name"], 14)
+                qty = _pdf_mono(row["Quantity"], 3)
+                unit_price = _pdf_mono(row["Unit_Price"], 10)
+                status = _pdf_mono(row["Status"], 6)
+                tcr = _pdf_mono(row["TCR_No"], 9)
+                invoice_no = _pdf_mono(row["Job_Invoice"], 9)
+                lines.append(f"| {article} | {part_name} | {qty} | {unit_price} | {status} | {tcr} | {invoice_no} |")
+                if row["Description"]:
+                    for line in _wrap_text(row["Description"], width=56):
+                        lines.append(f"|    Desc: {_pdf_mono(line, 56)} |")
+            lines.append("+--------+----------------+-----+------------+--------+-----------+-----------+")
+        else:
+            lines.append("No currently open service parts. All service jobs are closed or completed.")
+    else:
+        lines.append("No service billing records found for this engineer.")
+    lines.append("")
+
+    summary = [
+        f"Total purchase transactions: {len(purchases)}",
+        f"Total service billing rows: {len(jobs)}",
+        f"Open service rows: {len([j for j in jobs if j['Status'].upper() != 'CLOSED'])}",
+        "",
+        "Thank you for working with resQ Enterprise.",
+    ]
+    lines.extend(summary)
+
+    try:
+        pdf_bytes = _build_pdf_bytes(lines)
+        with open(output_path, "wb") as f:
+            f.write(pdf_bytes)
+        return True, output_path
+    except Exception as exc:
+        return False, f"Failed to create PDF: {exc}"
+
 
 def add_engineer(name: str, bp_id: str = "", pprr_id: str = ""):
     """Add or update an engineer in Engineers sheet."""
