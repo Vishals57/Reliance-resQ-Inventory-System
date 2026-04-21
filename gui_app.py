@@ -393,26 +393,32 @@ class ResQUltimateAdmin(ctk.CTk):
         # Stats Cards
         self.stats_frame = ctk.CTkFrame(self.t_dash, fg_color=self.colors["bg_secondary"], corner_radius=20)
         self.stats_frame.pack(fill="x", padx=30, pady=(0, 20), ipady=10, ipadx=10)
+        self.stats_frame.grid_columnconfigure((0,1,2,3), weight=1)
 
-        self.val_card = self.create_stat_card(self.stats_frame, "💰", "TOTAL VALUE", "₹ 0.00", self.colors["accent"])
-        self.cnt_card = self.create_stat_card(self.stats_frame, "📦", "TOTAL ITEMS", "0", self.colors["success"])
+        self.val_card = self.create_stat_card(self.stats_frame, "💰", "TOTAL VALUE", "₹ 0.00", self.colors["accent"], 0, 0)
+        self.cnt_card = self.create_stat_card(self.stats_frame, "📦", "TOTAL ITEMS", "0", self.colors["success"], 0, 1)
+        self.in_card = self.create_stat_card(self.stats_frame, "📥", "ASSETS IN", "0", self.colors["warning"], 0, 2)
+        self.out_card = self.create_stat_card(self.stats_frame, "📤", "ASSETS OUT", "0", self.colors["error"], 0, 3)
 
-        # Right-side dashboard options
-        self.dash_opts = ctk.CTkFrame(self.stats_frame, fg_color="transparent")
-        self.dash_opts.pack(side="right", padx=10, pady=8)
+        # Right-side dashboard options (moved outside stats_frame to avoid geometry manager conflict)
+        self.dash_opts = ctk.CTkFrame(self.t_dash, fg_color="transparent")
+        self.dash_opts.pack(fill="x", padx=30, pady=(0, 20))
         self.highlight_closed_var = ctk.BooleanVar(value=True)
+        
+        opts_left = ctk.CTkFrame(self.dash_opts, fg_color="transparent")
+        opts_left.pack(side="left")
         ctk.CTkSwitch(
-            self.dash_opts,
+            opts_left,
             text="Highlight Completed",
             variable=self.highlight_closed_var,
             command=self.refresh_all_data,
             onvalue=True,
             offvalue=False,
-        ).pack(pady=(28, 0))
+        ).pack(side="left", padx=(0, 20))
 
         # Search + filter
         search_frame = ctk.CTkFrame(self.dash_opts, fg_color=self.colors["bg_tertiary"], corner_radius=14)
-        search_frame.pack(pady=(10, 0), fill="x")
+        search_frame.pack(side="left", fill="x", expand=True)
         search_frame.grid_columnconfigure(1, weight=1)
         ctk.CTkLabel(search_frame, text="🔍", font=("Arial", 14), text_color=self.colors["text_tertiary"]).grid(row=0, column=0, padx=(12, 10), pady=10)
         self.dash_search = ctk.CTkEntry(search_frame, placeholder_text="Search (ID / Item / Engineer)", height=36)
@@ -420,7 +426,7 @@ class ResQUltimateAdmin(ctk.CTk):
         self.dash_search.bind("<KeyRelease>", lambda _e: self.refresh_all_data())
 
         filter_frame = ctk.CTkFrame(self.dash_opts, fg_color="transparent")
-        filter_frame.pack(pady=(10, 0), fill="x")
+        filter_frame.pack(side="right", padx=(20, 0))
         ctk.CTkLabel(filter_frame, text="Filter:", font=("Segoe UI", 11), text_color=self.colors["text_secondary"]).pack(side="left", padx=(0, 8))
         self.dash_status_var = ctk.StringVar(value="ALL")
         ctk.CTkSegmentedButton(
@@ -434,6 +440,13 @@ class ResQUltimateAdmin(ctk.CTk):
         self.tree_frame = ctk.CTkFrame(self.t_dash, fg_color=self.colors["bg_secondary"], corner_radius=12)
         self.tree_frame.pack(fill="both", expand=True, padx=30, pady=(0, 20))
 
+        # Loading indicator frame
+        self.loading_frame = ctk.CTkFrame(self.t_dash, fg_color="transparent")
+        self.loading_lbl = ctk.CTkLabel(self.loading_frame, text="⏳ Loading data...", font=("Segoe UI", 12, "bold"), text_color=self.colors["accent"])
+        self.loading_frame.pack(fill="x", padx=30, pady=(0, 10))
+        self.loading_lbl.pack()
+        self.loading_frame.pack_forget()
+        
         # Dashboard columns with improved styling
         self.tree = ttk.Treeview(
             self.tree_frame,
@@ -462,10 +475,9 @@ class ResQUltimateAdmin(ctk.CTk):
         except Exception:
             pass
 
-    def create_stat_card(self, parent, icon, title, val, color):
-        card = ctk.CTkFrame(parent, fg_color=self.colors["bg_tertiary"], corner_radius=12, width=280, height=110)
-        card.pack(side="left", padx=12)
-        card.pack_propagate(False)
+    def create_stat_card(self, parent, icon, title, val, color, row, col):
+        card = ctk.CTkFrame(parent, fg_color=self.colors["bg_tertiary"], corner_radius=12)
+        card.grid(row=row, column=col, padx=12, pady=12, sticky="nsew")
         
         # Icon and title in header
         header = ctk.CTkFrame(card, fg_color="transparent")
@@ -1065,6 +1077,29 @@ class ResQUltimateAdmin(ctk.CTk):
             text_color=self.colors["success"],
         )
         self.status_lbl.grid(row=1, column=0, sticky="w", pady=(6, 0))
+        
+        # Transaction progress indicator
+        progress_frame = ctk.CTkFrame(header, fg_color="transparent")
+        progress_frame.grid(row=0, column=1, sticky="e", padx=(0, 0))
+        ctk.CTkLabel(progress_frame, text="Transaction Progress:", font=("Segoe UI", 10), text_color=self.colors["text_secondary"]).pack(side="left", padx=(0, 12))
+        
+        steps_container = ctk.CTkFrame(progress_frame, fg_color="transparent")
+        steps_container.pack(side="left")
+        
+        self.progress_steps = {}
+        for i, (step, icon) in enumerate([("Scan", "📸"), ("Process", "⚙️"), ("Complete", "✓")]):
+            step_btn = ctk.CTkLabel(
+                steps_container,
+                text=f"{icon} {step}",
+                font=("Segoe UI", 9, "bold"),
+                fg_color=self.colors["bg_secondary"],
+                text_color=self.colors["text_tertiary"],
+                corner_radius=8,
+                padx=10,
+                pady=6
+            )
+            step_btn.pack(side="left", padx=4)
+            self.progress_steps[step] = step_btn
 
         # Details card with better styling
         self.details_card = ctk.CTkFrame(self.scan_pnl, fg_color=self.colors["bg_tertiary"], corner_radius=12)
@@ -1294,6 +1329,13 @@ class ResQUltimateAdmin(ctk.CTk):
 
     # --- CORE REFRESH LOGIC (THE FIX) ---
     def refresh_all_data(self):
+        # Show loading indicator
+        try:
+            self.loading_frame.pack(fill="x", padx=30, pady=(0, 10))
+            self.update()
+        except Exception:
+            pass
+        
         # 1. Update Dashboard
         for i in self.tree.get_children(): self.tree.delete(i)
         if os.path.exists(engine.DB_FILE):
@@ -1394,10 +1436,22 @@ class ResQUltimateAdmin(ctk.CTk):
                 total_val = (df_m['Stock_Level'] * df_m['SP']).sum()
                 self.val_card.configure(text=f"₹ {total_val:,.2f}")
                 self.cnt_card.configure(text=str(int(df_m['Stock_Level'].sum())))
+                
+                # Update new cards for IN/OUT counts
+                in_count = df[df['Status'].str.upper() == 'IN'].shape[0]
+                out_count = df[df['Status'].str.upper() == 'OUT'].shape[0]
+                self.in_card.configure(text=str(in_count))
+                self.out_card.configure(text=str(out_count))
             except Exception as e: print(f"Master Error: {e}")
 
         try:
             self.refresh_billing_tree()
+        except Exception:
+            pass
+        
+        # Hide loading indicator
+        try:
+            self.loading_frame.pack_forget()
         except Exception:
             pass
 
@@ -1443,8 +1497,31 @@ class ResQUltimateAdmin(ctk.CTk):
         except Exception as e:
             messagebox.showerror("Print Error", f"Could not print.\n{e}")
 
+    def _update_progress_step(self, step_name, active=True):
+        """Update the transaction progress indicator"""
+        if not hasattr(self, 'progress_steps'):
+            return
+        
+        steps_order = ["Scan", "Process", "Complete"]
+        try:
+            current_idx = steps_order.index(step_name)
+            for i, step in enumerate(steps_order):
+                if i <= current_idx:
+                    self.progress_steps[step].configure(
+                        fg_color=self.colors["accent"],
+                        text_color="white"
+                    )
+                else:
+                    self.progress_steps[step].configure(
+                        fg_color=self.colors["bg_secondary"],
+                        text_color=self.colors["text_tertiary"]
+                    )
+        except Exception:
+            pass
+    
     def execute_move(self, t):
         if not self.current_scanned_id: return messagebox.showwarning("!", "Scan QR First")
+        self._update_progress_step("Process")
 
         # IN: allow multiple physical units via Qty -> Sr_No auto assignment
         if t.upper() == "IN":
@@ -1477,6 +1554,7 @@ class ResQUltimateAdmin(ctk.CTk):
                 tax_invoice_no=tax_invoice_no,
             )
             if s:
+                self._update_progress_step("Complete")
                 # Generate ONE box QR (mobile-readable) for the whole inward
                 details = engine.get_scan_details(self.current_scanned_id)
                 part = details.get("Part_Name", "")
@@ -1493,7 +1571,9 @@ class ResQUltimateAdmin(ctk.CTk):
                     except Exception:
                         pass
 
-                messagebox.showinfo("OK", m); self.refresh_all_data()
+                messagebox.showinfo("OK", m)
+                self.after(500, lambda: self._update_progress_step("Scan"))
+                self.refresh_all_data()
             else: messagebox.showerror("Err", m)
             return
 
@@ -1526,16 +1606,26 @@ class ResQUltimateAdmin(ctk.CTk):
                 engineer=self.selected_engineer,
                 sr_no=sr_no,
             )
-            if s: messagebox.showinfo("OK", m); self.refresh_all_data()
+            if s:
+                self._update_progress_step("Complete")
+                messagebox.showinfo("OK", m)
+                self.after(500, lambda: self._update_progress_step("Scan"))
+                self.refresh_all_data()
             else: messagebox.showerror("Err", m)
             return
 
         s, m = engine.process_movement(self.current_scanned_id, t, purchase_type=self.move_type_var.get(), engineer=self.selected_engineer)
-        if s: messagebox.showinfo("OK", m); self.refresh_all_data()
+        if s:
+            self._update_progress_step("Complete")
+            messagebox.showinfo("OK", m)
+            self.after(500, lambda: self._update_progress_step("Scan"))
+            self.refresh_all_data()
 
     def run_scan(self):
+        self._update_progress_step("Scan")
         res, _ = scanner.activate_scanner()
         if not res:
+            self._update_progress_step("Scan")
             return
 
         self.current_scanned_id = res
