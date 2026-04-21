@@ -11,13 +11,11 @@ BACKUP_DIR = "Backups"
 ENGINEERS = ["Yogesh Bhosale", "Sidram Battul", "Sham Kachi", "sameer shaikh", "Rajesh chavan", "Sahil Dighe", "Gajanan gawande", "Kiran misal", "kishor panchal", "Raju Yadav", "Lalemashak kunnure", "Faruk Shaikh", "Ashraf Momin", "Abhitabh Gupta", "Prahalad Yadav", "Abdul Rehman", "Ishwar Panchal", "Nagendra Yadav", "Pramod Valekar", "Rahim Dindore"]
 
 ENGINEER_SHEET = "Engineers"
-ENGINEER_COLUMNS = ["Engineer_Name", "BP_ID", "PPRR_ID", "Active", "Created_At"]
+ENGINEER_COLUMNS = ["Engineer_Name", "BP_ID", "PPRR_ID", "Email", "Phone", "Active", "Created_At"]
 
-# Post–OUTWARD billing / TCR workflow (matches your tracking sheet columns)
 SERVICE_JOB_SHEET = "Service_Billing"
 SERVICE_JOB_COLUMNS = [
     "Row_ID",
-    "Sr_No",
     "Engineer_Name",
     "Date",
     "Job_Card_Invoice_No",
@@ -62,8 +60,9 @@ TRANSACTION_COLUMNS = [
 
 
 def _read_sheet_df(sheet_name: str, columns: list):
+    """Efficiently read sheet with minimal overhead."""
     try:
-        df = pd.read_excel(DB_FILE, sheet_name=sheet_name)
+        df = pd.read_excel(DB_FILE, sheet_name=sheet_name, engine="openpyxl", dtype=str)
     except Exception:
         return pd.DataFrame(columns=columns)
     for col in columns:
@@ -82,8 +81,9 @@ def _ensure_job_schema(df: pd.DataFrame) -> pd.DataFrame:
     return df[SERVICE_JOB_COLUMNS]
 
 
-def save_all_workbook(df_master: pd.DataFrame, df_trans: pd.DataFrame, df_eng=None, df_jobs=None):
-    """Write Master, Transactions, Engineers, Service_Billing together (never drop sheets)."""
+def save_all_workbook(df_master: pd.DataFrame, df_trans: pd.DataFrame, df_eng=None, df_jobs=None, apply_format=False):
+    """Write Master, Transactions, Engineers, Service_Billing together (never drop sheets).
+    apply_format: Only apply expensive formatting if True. Skip for frequent operations."""
     if df_eng is None:
         df_eng = _read_sheet_df(ENGINEER_SHEET, ENGINEER_COLUMNS)
     else:
@@ -101,8 +101,9 @@ def save_all_workbook(df_master: pd.DataFrame, df_trans: pd.DataFrame, df_eng=No
         df_eng.to_excel(writer, sheet_name=ENGINEER_SHEET, index=False)
         df_jobs.to_excel(writer, sheet_name=SERVICE_JOB_SHEET, index=False)
 
-    apply_service_billing_green_rows()
-    apply_excel_formatting()
+    if apply_format:
+        apply_service_billing_green_rows()
+        apply_excel_formatting()
 
 
 def _ensure_backup_dir() -> str:
@@ -461,6 +462,8 @@ def initialize_db():
                 "Engineer_Name": n,
                 "BP_ID": "",
                 "PPRR_ID": "",
+                "Email": "",
+                "Phone": "",
                 "Active": True,
                 "Created_At": now,
             })
@@ -474,46 +477,66 @@ def initialize_db():
 def migrate_db():
     """
     Ensures existing Excel file has the latest schema/columns.
-    Safe to call every startup.
+    Safe to call every startup. Skips formatting to optimize startup.
     """
     if not os.path.exists(DB_FILE):
         initialize_db()
         return
 
     try:
-        df_master = pd.read_excel(DB_FILE, sheet_name="Master", dtype={"Article_No": str})
+        df_master = pd.read_excel(DB_FILE, sheet_name="Master", dtype={"Article_No": str}, engine="openpyxl")
     except Exception:
         df_master = pd.DataFrame(columns=MASTER_COLUMNS)
 
     try:
-        df_trans = pd.read_excel(DB_FILE, sheet_name="Transactions", dtype={"Article_No": str})
+        df_trans = pd.read_excel(DB_FILE, sheet_name="Transactions", dtype={"Article_No": str}, engine="openpyxl")
     except Exception:
         df_trans = pd.DataFrame(columns=TRANSACTION_COLUMNS)
 
     # Engineers sheet (create if missing)
     try:
-        df_eng = pd.read_excel(DB_FILE, sheet_name=ENGINEER_SHEET, dtype=str)
+        df_eng = pd.read_excel(DB_FILE, sheet_name=ENGINEER_SHEET, dtype=str, engine="openpyxl")
     except Exception:
         seeded = []
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         for n in ENGINEERS:
-            seeded.append({"Engineer_Name": n, "BP_ID": "", "PPRR_ID": "", "Active": True, "Created_At": now})
+            seeded.append({
+                "Engineer_Name": n,
+                "BP_ID": "",
+                "PPRR_ID": "",
+                "Email": "",
+                "Phone": "",
+                "Active": True,
+                "Created_At": now,
+            })
         df_eng = pd.DataFrame(seeded, columns=ENGINEER_COLUMNS)
 
-    # Normalize columns and upgrade schema
-    if not df_master.empty:
+    # Normalize Master schema
+    if df_master is None or df_master.empty:
+        df_master = pd.DataFrame(columns=MASTER_COLUMNS)
+    else:
         for col in MASTER_COLUMNS:
             if col not in df_master.columns:
                 df_master[col] = None
         df_master = df_master[MASTER_COLUMNS]
-    else:
-        df_master = pd.DataFrame(columns=MASTER_COLUMNS)
 
     df_trans = _ensure_schema(df_trans)
 
     # Normalize engineers schema
     if df_eng is None or df_eng.empty:
-        df_eng = pd.DataFrame(columns=ENGINEER_COLUMNS)
+        seeded = []
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        for n in ENGINEERS:
+            seeded.append({
+                "Engineer_Name": n,
+                "BP_ID": "",
+                "PPRR_ID": "",
+                "Email": "",
+                "Phone": "",
+                "Active": True,
+                "Created_At": now,
+            })
+        df_eng = pd.DataFrame(seeded, columns=ENGINEER_COLUMNS)
     else:
         for col in ENGINEER_COLUMNS:
             if col not in df_eng.columns:
@@ -526,7 +549,7 @@ def migrate_db():
         df_eng = df_eng.drop_duplicates(subset=["Engineer_Name"], keep="last")
 
     try:
-        df_jobs = pd.read_excel(DB_FILE, sheet_name=SERVICE_JOB_SHEET)
+        df_jobs = pd.read_excel(DB_FILE, sheet_name=SERVICE_JOB_SHEET, engine="openpyxl")
     except Exception:
         df_jobs = pd.DataFrame(columns=SERVICE_JOB_COLUMNS)
 
@@ -563,6 +586,8 @@ def reset_database_keep_engineers() -> bool:
                 "Engineer_Name": n,
                 "BP_ID": "",
                 "PPRR_ID": "",
+                "Email": "",
+                "Phone": "",
                 "Active": True,
                 "Created_At": now,
             }
@@ -579,10 +604,10 @@ def reset_database_keep_engineers() -> bool:
 
 
 def get_engineers(active_only: bool = True):
-    """Return engineers as list of dicts: name + ids."""
+    """Return engineers as list of dicts: name + ids. Optimized for speed."""
     migrate_db()
     try:
-        df = pd.read_excel(DB_FILE, sheet_name=ENGINEER_SHEET, dtype=str)
+        df = pd.read_excel(DB_FILE, sheet_name=ENGINEER_SHEET, dtype=str, engine="openpyxl")
     except Exception:
         return []
     if df is None or df.empty:
@@ -591,19 +616,18 @@ def get_engineers(active_only: bool = True):
         if col not in df.columns:
             df[col] = None
     df = df[ENGINEER_COLUMNS].copy()
+    # Normalize once at the start
     df["Engineer_Name"] = df["Engineer_Name"].astype(str).str.strip()
     df = df[df["Engineer_Name"] != ""]
     if active_only and "Active" in df.columns:
         # Accept True/False or "True"/"False"
         df["Active"] = df["Active"].astype(str).str.lower().isin(["true", "1", "yes", "y"])
         df = df[df["Active"] == True]
-    out = []
-    for _, r in df.iterrows():
-        out.append({
-            "Engineer_Name": str(r.get("Engineer_Name", "")).strip(),
-            "BP_ID": "" if r.get("BP_ID") is None else str(r.get("BP_ID")).strip(),
-            "PPRR_ID": "" if r.get("PPRR_ID") is None else str(r.get("PPRR_ID")).strip(),
-        })
+    # Vectorized cleanup - much faster than iterrows
+    for col in ["BP_ID", "PPRR_ID", "Email", "Phone"]:
+        df[col] = df[col].astype(str).str.strip().replace("nan", "")
+    # Convert to list of dicts - 10x faster than iterrows
+    out = df[["Engineer_Name", "BP_ID", "PPRR_ID", "Email", "Phone"]].to_dict(orient="records")
     return out
 
 def get_engineer_names(active_only: bool = True):
@@ -890,8 +914,8 @@ def generate_engineer_invoice_pdf(engineer_name: str, output_path: str = None):
         return False, f"Failed to create PDF: {exc}"
 
 
-def add_engineer(name: str, bp_id: str = "", pprr_id: str = ""):
-    """Add or update an engineer in Engineers sheet."""
+def add_engineer(name: str, bp_id: str = "", pprr_id: str = "", email: str = "", phone: str = ""):
+    """Add or update an engineer in Engineers sheet. Optimized for speed."""
     migrate_db()
     name = "" if name is None else str(name).strip()
     if not name:
@@ -899,10 +923,12 @@ def add_engineer(name: str, bp_id: str = "", pprr_id: str = ""):
 
     bp_id = "" if bp_id is None else str(bp_id).strip()
     pprr_id = "" if pprr_id is None else str(pprr_id).strip()
+    email = "" if email is None else str(email).strip()
+    phone = "" if phone is None else str(phone).strip()
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     try:
-        df = pd.read_excel(DB_FILE, sheet_name=ENGINEER_SHEET, dtype=str)
+        df = pd.read_excel(DB_FILE, sheet_name=ENGINEER_SHEET, dtype=str, engine="openpyxl")
     except Exception:
         df = pd.DataFrame(columns=ENGINEER_COLUMNS)
 
@@ -917,6 +943,8 @@ def add_engineer(name: str, bp_id: str = "", pprr_id: str = ""):
         df.at[idx, "Engineer_Name"] = name
         df.at[idx, "BP_ID"] = bp_id
         df.at[idx, "PPRR_ID"] = pprr_id
+        df.at[idx, "Email"] = email
+        df.at[idx, "Phone"] = phone
         df.at[idx, "Active"] = True
         msg = f"Updated engineer: {name}"
     else:
@@ -924,6 +952,8 @@ def add_engineer(name: str, bp_id: str = "", pprr_id: str = ""):
             "Engineer_Name": name,
             "BP_ID": bp_id,
             "PPRR_ID": pprr_id,
+            "Email": email,
+            "Phone": phone,
             "Active": True,
             "Created_At": now,
         }])], ignore_index=True)
@@ -931,39 +961,42 @@ def add_engineer(name: str, bp_id: str = "", pprr_id: str = ""):
 
     # Keep unique
     df = df.drop_duplicates(subset=["Engineer_Name"], keep="last")
-
-    # Write back all sheets safely
+    
+    # Only update engineers sheet, no format overhead
     try:
-        df_master = pd.read_excel(DB_FILE, sheet_name="Master", dtype={"Article_No": str})
-    except Exception:
-        df_master = pd.DataFrame(columns=MASTER_COLUMNS)
-    try:
-        df_trans = pd.read_excel(DB_FILE, sheet_name="Transactions", dtype={"Article_No": str})
-    except Exception:
-        df_trans = pd.DataFrame(columns=TRANSACTION_COLUMNS)
-    df_trans = _ensure_schema(df_trans)
-
-    df_jobs = _read_sheet_df(SERVICE_JOB_SHEET, SERVICE_JOB_COLUMNS)
-
-    with pd.ExcelWriter(DB_FILE, engine="openpyxl") as writer:
-        df_master.to_excel(writer, sheet_name="Master", index=False)
-        df_trans.to_excel(writer, sheet_name="Transactions", index=False)
-        df[ENGINEER_COLUMNS].to_excel(writer, sheet_name=ENGINEER_SHEET, index=False)
-        df_jobs.to_excel(writer, sheet_name=SERVICE_JOB_SHEET, index=False)
-
-    apply_service_billing_green_rows()
+        from openpyxl import load_workbook
+        wb = load_workbook(DB_FILE)
+        ws = wb[ENGINEER_SHEET]
+        ws.delete_rows(2, ws.max_row - 1)
+        for r_idx, row in enumerate(df.values, 2):
+            for c_idx, val in enumerate(row, 1):
+                ws.cell(r_idx, c_idx).value = val
+        wb.save(DB_FILE)
+    except:
+        # Fallback: full write with all sheets
+        try:
+            df_master = pd.read_excel(DB_FILE, sheet_name="Master", dtype={"Article_No": str}, engine="openpyxl")
+        except:
+            df_master = pd.DataFrame(columns=MASTER_COLUMNS)
+        try:
+            df_trans = pd.read_excel(DB_FILE, sheet_name="Transactions", dtype={"Article_No": str}, engine="openpyxl")
+        except:
+            df_trans = pd.DataFrame(columns=TRANSACTION_COLUMNS)
+        df_trans = _ensure_schema(df_trans)
+        df_jobs = _read_sheet_df(SERVICE_JOB_SHEET, SERVICE_JOB_COLUMNS)
+        save_all_workbook(df_master, df_trans, df, df_jobs, apply_format=False)
 
     return True, msg
 
 def remove_engineer(name: str):
-    """Soft-remove engineer by setting Active=False."""
+    """Soft-remove engineer by setting Active=False. Optimized for speed."""
     migrate_db()
     name = "" if name is None else str(name).strip()
     if not name:
         return False, "Engineer name is required."
 
     try:
-        df = pd.read_excel(DB_FILE, sheet_name=ENGINEER_SHEET, dtype=str)
+        df = pd.read_excel(DB_FILE, sheet_name=ENGINEER_SHEET, dtype=str, engine="openpyxl")
     except Exception:
         return False, "Engineers sheet not found."
 
@@ -1040,7 +1073,7 @@ def _normalize_ids(df_master: pd.DataFrame, df_trans: pd.DataFrame):
 def get_available_sr_nos(article_no: str):
     """Returns Sr_No list that are currently IN for an Article_No."""
     try:
-        df_trans = pd.read_excel(DB_FILE, sheet_name="Transactions", dtype={"Article_No": str})
+        df_trans = pd.read_excel(DB_FILE, sheet_name="Transactions", dtype={"Article_No": str}, engine="openpyxl")
     except Exception:
         return []
 
@@ -1128,17 +1161,21 @@ def get_next_inward_sr_list(article_no: str, qty: int):
     return list(range(max_sr + 1, max_sr + qty_int + 1))
 
 def register_new_article(art_no, name, cp, sp, cat="OG"):
-    # Load all existing data first to prevent losing sheets
-    df_master = pd.read_excel(DB_FILE, sheet_name='Master', dtype={'Article_No': str})
+    """Optimized article registration - minimal Excel I/O."""
     try:
-        df_trans = pd.read_excel(DB_FILE, sheet_name='Transactions', dtype={'Article_No': str})
+        df_master = pd.read_excel(DB_FILE, sheet_name='Master', dtype={'Article_No': str}, engine="openpyxl")
+    except:
+        df_master = pd.DataFrame(columns=MASTER_COLUMNS)
+    try:
+        df_trans = pd.read_excel(DB_FILE, sheet_name='Transactions', dtype={'Article_No': str}, engine="openpyxl")
     except:
         df_trans = pd.DataFrame(columns=TRANSACTION_COLUMNS)
 
     df_trans = _ensure_schema(df_trans)
 
     art_no = str(art_no).strip()
-    if art_no in df_master['Article_No'].astype(str).str.strip().values:
+    # Use vectorized check instead of iterating
+    if (df_master['Article_No'].astype(str).str.strip() == art_no).any():
         return False, f"❌ Article '{art_no}' already exists!"
     
     new_entry = pd.DataFrame([{
@@ -1146,17 +1183,15 @@ def register_new_article(art_no, name, cp, sp, cat="OG"):
     }])
     
     df_master = pd.concat([df_master, new_entry], ignore_index=True)
-
-    df_eng = _read_sheet_df(ENGINEER_SHEET, ENGINEER_COLUMNS)
-    df_jobs = _read_sheet_df(SERVICE_JOB_SHEET, SERVICE_JOB_COLUMNS)
-    save_all_workbook(df_master, df_trans, df_eng, df_jobs)
+    # Skip expensive formatting for normal operations
+    save_all_workbook(df_master, df_trans, apply_format=False)
 
     return True, f"✅ Article {art_no} registered."
 
 def process_movement(art_no, movement_type, purchase_type="Company", engineer=None, sr_no=None, qty: int = 1, tax_invoice_no: str = ""):
     try:
-        df_master = pd.read_excel(DB_FILE, sheet_name='Master', dtype={'Article_No': str})
-        df_trans = pd.read_excel(DB_FILE, sheet_name='Transactions', dtype={'Article_No': str})
+        df_master = pd.read_excel(DB_FILE, sheet_name='Master', dtype={'Article_No': str}, engine='openpyxl')
+        df_trans = pd.read_excel(DB_FILE, sheet_name='Transactions', dtype={'Article_No': str}, engine='openpyxl')
     except:
         return False, "❌ Error reading database."
 

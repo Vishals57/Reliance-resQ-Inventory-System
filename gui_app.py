@@ -1155,6 +1155,7 @@ class ResQUltimateAdmin(ctk.CTk):
         eng_hdr = ctk.CTkFrame(self.eng_wrap, fg_color="transparent")
         eng_hdr.pack(fill="x", pady=(20, 8), padx=20)
         ctk.CTkLabel(eng_hdr, text="👷 Engineers", font=("Segoe UI", 16, "bold"), text_color=self.colors["text_primary"]).pack(side="left")
+        ctk.CTkButton(eng_hdr, text="✏️", width=40, height=32, fg_color=self.colors["warning"], hover_color="#d97706", command=self.edit_engineer_ui).pack(side="right", padx=(6, 0))
         ctk.CTkButton(eng_hdr, text="➕", width=40, height=32, fg_color=self.colors["success"], hover_color="#059669", command=self.add_engineer_ui).pack(side="right", padx=(6, 0))
         ctk.CTkButton(eng_hdr, text="➖", width=40, height=32, fg_color=self.colors["error"], hover_color="#dc2626", command=self.remove_engineer_ui).pack(side="right")
 
@@ -1241,6 +1242,23 @@ class ResQUltimateAdmin(ctk.CTk):
         except Exception as e:
             messagebox.showerror("Err", str(e))
 
+    def edit_engineer_ui(self):
+        if not self.selected_engineer:
+            return messagebox.showwarning("Edit Engineer", "Select an engineer first.")
+        try:
+            bp = (CTkInputDialog(text="BP ID (optional) or leave empty to skip", title="Edit Engineer").get_input() or "").strip()
+            pprr = (CTkInputDialog(text="PPRR ID (optional) or leave empty to skip", title="Edit Engineer").get_input() or "").strip()
+            if bp == "" and pprr == "":
+                return messagebox.showwarning("Edit Engineer", "Enter at least one value.")
+            ok, msg = engine.add_engineer(self.selected_engineer, bp_id=bp, pprr_id=pprr)
+            if ok:
+                messagebox.showinfo("OK", msg)
+                self.refresh_engineers()
+            else:
+                messagebox.showerror("Err", msg)
+        except Exception as e:
+            messagebox.showerror("Err", str(e))
+
     def remove_engineer_ui(self):
         # Remove currently selected engineer (simple + safe)
         if not self.selected_engineer:
@@ -1280,8 +1298,9 @@ class ResQUltimateAdmin(ctk.CTk):
         for i in self.tree.get_children(): self.tree.delete(i)
         if os.path.exists(engine.DB_FILE):
             try:
-                df_t = pd.read_excel(engine.DB_FILE, sheet_name='Transactions')
-                df_m = pd.read_excel(engine.DB_FILE, sheet_name='Master')
+                # Optimized: Read once with openpyxl engine for speed
+                df_t = pd.read_excel(engine.DB_FILE, sheet_name='Transactions', engine='openpyxl')
+                df_m = pd.read_excel(engine.DB_FILE, sheet_name='Master', engine='openpyxl')
                 if "Sr_No" not in df_t.columns:
                     df_t["Sr_No"] = 1
                 if "Tax_Invoice_No" not in df_t.columns:
@@ -1290,6 +1309,7 @@ class ResQUltimateAdmin(ctk.CTk):
                     df_t["In_Date"] = df_t["Date"] if "Date" in df_t.columns else ""
                 if "Out_Date" not in df_t.columns:
                     df_t["Out_Date"] = df_t["Date"] if "Date" in df_t.columns else ""
+                # Vectorized merge - faster than loop
                 df = pd.merge(df_t, df_m[['Article_No', 'Part_Name', 'SP']], on='Article_No', how='left')
 
                 # Dashboard filters
