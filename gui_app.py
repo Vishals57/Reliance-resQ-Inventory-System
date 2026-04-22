@@ -539,6 +539,8 @@ class ResQUltimateAdmin(ctk.CTk):
         self.asset_search.pack(side="left", fill="x", expand=True, padx=(0, 15), pady=12)
         self.asset_search.bind("<KeyRelease>", lambda _e: self.refresh_all_data())
         
+
+        
         self.master_box = ctk.CTkFrame(self.asset_split, fg_color=self.colors["bg_secondary"], corner_radius=12)
         self.master_box.pack(side="right", fill="both", expand=True, padx=20, pady=(0, 20))
         self.master_tree = ttk.Treeview(self.master_box, columns=("ID", "Name", "CP", "SP", "Stock"), show="headings", height=20)
