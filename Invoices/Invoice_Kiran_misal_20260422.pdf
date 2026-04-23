@@ -1,0 +1,83 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Length 1702 >>
+stream
+BT
+/F1 12 Tf
+50 800 Td
+(+------------------------------------------------------------------------+) Tj
+0 -16 Td
+(| resQ Enterprise - Engineer Invoice                                    |) Tj
+0 -16 Td
+(+------------------------------------------------------------------------+) Tj
+0 -16 Td
+(| Engineer: Kiran misal                                              |) Tj
+0 -16 Td
+(| Generated: 22-Apr-2026 17:10                                        |) Tj
+0 -16 Td
+(+------------------------------------------------------------------------+) Tj
+0 -16 Td
+() Tj
+0 -16 Td
+(+------------------------------------------------------------------------+) Tj
+0 -16 Td
+(| Purchased items from us:                                              |) Tj
+0 -16 Td
+(+--------+----------------+----------+------------+-----+-----------+--------+) Tj
+0 -16 Td
+(| Article | Part           | Type     | Invoice    | Sr  | Charges   | Status |) Tj
+0 -16 Td
+(+--------+----------------+----------+------------+-----+-----------+--------+) Tj
+0 -16 Td
+(| 20     | wire           | ? Local  | vss102     | 21  | ?1,200.00 | OUT    |) Tj
+0 -16 Td
+(| 20     | wire           | ? Local  | vss102     | 22  | ?1,200.00 | OUT    |) Tj
+0 -16 Td
+(| 20     | wire           | ? Local  | vss102     | 23  | ?1,200.00 | OUT    |) Tj
+0 -16 Td
+(+--------+----------------+----------+------------+-----+-----------+--------+) Tj
+0 -16 Td
+() Tj
+0 -16 Td
+(No currently open service parts. All service jobs are closed or completed.) Tj
+0 -16 Td
+() Tj
+0 -16 Td
+(Total purchase transactions: 3) Tj
+0 -16 Td
+(Total service billing rows: 3) Tj
+0 -16 Td
+(Open service rows: 0) Tj
+0 -16 Td
+() Tj
+0 -16 Td
+(Thank you for working with resQ Enterprise.) Tj
+ET
+endstream
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 3 0 R /Resources << /Font << /F1 1 0 R >> >> >>
+endobj
+5 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000015 00000 n 
+0000000083 00000 n 
+0000000140 00000 n 
+0000001894 00000 n 
+0000002020 00000 n 
+trailer
+<< /Size 6 /Root 5 0 R >>
+startxref
+2069
+%%EOF
