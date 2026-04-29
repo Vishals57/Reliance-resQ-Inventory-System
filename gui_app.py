@@ -18,6 +18,109 @@ try:
 except ImportError:
     HAS_CALENDAR = False
 
+class Toast:
+    """Toast notification system for non-blocking notifications."""
+    _active_toasts = []
+    
+    @classmethod
+    def show(cls, parent, message, notification_type="info", duration=3000):
+        """Show a toast notification."""
+        toast_window = tk.Toplevel(parent)
+        toast_window.attributes('-topmost', True)
+        toast_window.configure(bg="#1f1f26")
+        
+        # Color based on type
+        colors = {
+            "success": ("#10b981", "#0f2818"),
+            "error": ("#ef4444", "#2d1a1a"),
+            "warning": ("#f59e0b", "#2d1f0a"),
+            "info": ("#3b82f6", "#1a2540"),
+        }
+        fg_color, bg_color = colors.get(notification_type, colors["info"])
+        
+        # Create frame with icon
+        frame = ctk.CTkFrame(toast_window, fg_color=bg_color, corner_radius=8)
+        frame.pack(padx=15, pady=15)
+        
+        icon_map = {"success": "✓", "error": "✕", "warning": "⚠", "info": "ℹ"}
+        icon = icon_map.get(notification_type, "ℹ")
+        
+        msg_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        msg_frame.pack(padx=15, pady=10)
+        
+        ctk.CTkLabel(msg_frame, text=f"{icon} {message}", font=("Segoe UI", 11),
+                    text_color=fg_color, wraplength=350, justify="left").pack()
+        
+        # Position at top-right
+        toast_window.update_idletasks()
+        x = parent.winfo_width() - 400
+        y = 50
+        toast_window.geometry(f"+{max(0, x)}+{y}")
+        toast_window.resizable(False, False)
+        toast_window.overrideredirect(True)
+        
+        cls._active_toasts.append(toast_window)
+        
+        def close():
+            try:
+                toast_window.destroy()
+                cls._active_toasts.remove(toast_window)
+            except:
+                pass
+        
+        parent.after(duration, close)
+
+class LoadingSpinner:
+    """Animated loading spinner for async operations."""
+    def __init__(self, parent, text="Processing..."):
+        self.parent = parent
+        self.text = text
+        self.spinner = None
+        self.running = False
+        self.frame = None
+        self.spinner_label = None
+        self.text_label = None
+        self.frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+        self.current = 0
+    
+    def show(self):
+        """Display the loading spinner."""
+        self.spinner = tk.Toplevel(self.parent)
+        self.spinner.attributes('-topmost', True)
+        self.spinner.configure(bg="#1f1f26")
+        self.spinner.geometry("300x120")
+        self.spinner.resizable(False, False)
+        
+        self.frame = ctk.CTkFrame(self.spinner, fg_color="#16161a", corner_radius=12)
+        self.frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        self.spinner_label = ctk.CTkLabel(self.frame, text="⠋", font=("Arial", 24),
+                                         text_color="#3b82f6")
+        self.spinner_label.pack(pady=(10, 5))
+        
+        self.text_label = ctk.CTkLabel(self.frame, text=self.text, font=("Segoe UI", 11),
+                                      text_color="#d1d5db")
+        self.text_label.pack(pady=(5, 10))
+        
+        self.running = True
+        self.animate()
+    
+    def animate(self):
+        """Animate the spinner."""
+        if self.running and self.spinner_label:
+            self.spinner_label.configure(text=self.frames[self.current % len(self.frames)])
+            self.current += 1
+            self.parent.after(80, self.animate)
+    
+    def hide(self):
+        """Hide the loading spinner."""
+        self.running = False
+        if self.spinner:
+            try:
+                self.spinner.destroy()
+            except:
+                pass
+
 class ResQUltimateAdmin(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -32,8 +135,8 @@ class ResQUltimateAdmin(ctk.CTk):
             "bg_primary": "#0a0a0e",
             "bg_secondary": "#16161a",
             "bg_tertiary": "#1f1f26",
-            "accent": "#3b82f6",
-            "accent_hover": "#2563eb",
+            "accent": "#fa9509",
+            "accent_hover": "#ffae00",
             "success": "#10b981",
             "warning": "#f59e0b",
             "error": "#ef4444",
@@ -68,7 +171,6 @@ class ResQUltimateAdmin(ctk.CTk):
         logo_frame.pack(pady=30)
         ctk.CTkLabel(logo_frame, text="🎯", font=("Arial", 32), text_color=self.colors["accent"]).pack()
         ctk.CTkLabel(logo_frame, text="resQ", font=("Segoe UI", 14, "bold"), text_color=self.colors["accent"]).pack(pady=(5, 0))
-        ctk.CTkLabel(logo_frame, text="by vishal", font=("Arial", 10), text_color=self.colors["accent"]).pack()
 
         # 3. Container & Tabs
         self.container = ctk.CTkFrame(self, fg_color="transparent", corner_radius=0)
@@ -88,6 +190,18 @@ class ResQUltimateAdmin(ctk.CTk):
         self.create_nav_btn("🔧", "Operations")
         self.create_nav_btn("📁", "Asset Manager")
         self.create_nav_btn("📋", "Billing / TCR")
+
+        # Help button
+        ctk.CTkButton(
+            self.sidebar,
+            text="❓",
+            width=65,
+            height=65,
+            fg_color="transparent",
+            font=("Arial", 26),
+            hover_color=self.colors["bg_tertiary"],
+            command=self.show_keyboard_shortcuts,
+        ).pack(pady=12)
 
         # Backup/Export button always visible in sidebar
         ctk.CTkButton(
@@ -473,6 +587,9 @@ class ResQUltimateAdmin(ctk.CTk):
             self.tree.tag_configure("open", foreground="#f59e0b", background="#2d1f0a")
         except Exception:
             pass
+        
+        # Enable sorting on table
+        self.setup_treeview_sorting(self.tree)
 
     def create_stat_card(self, parent, icon, title, val, color):
         card = ctk.CTkFrame(parent, fg_color=self.colors["bg_tertiary"], corner_radius=12, width=280, height=110)
@@ -489,6 +606,140 @@ class ResQUltimateAdmin(ctk.CTk):
         lbl = ctk.CTkLabel(card, text=val, font=("Segoe UI", 22, "bold"), text_color=color)
         lbl.pack(pady=(0, 10))
         return lbl
+
+    def copy_to_clipboard(self, text):
+        """Copy text to clipboard with visual feedback."""
+        if not text or text == "-":
+            Toast.show(self, "Nothing to copy", "warning")
+            return
+        
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(text)
+            Toast.show(self, f"Copied: {text[:50]}{'...' if len(text) > 50 else ''}", "success")
+        except Exception as e:
+            Toast.show(self, f"Copy failed: {str(e)}", "error")
+
+    def show_empty_state(self, parent, icon, title, description):
+        """Display a helpful empty state message in a frame."""
+        # Clear existing children
+        for child in parent.winfo_children():
+            child.destroy()
+        
+        # Create empty state frame
+        frame = ctk.CTkFrame(parent, fg_color="transparent")
+        frame.pack(fill="both", expand=True, padx=40, pady=40)
+        
+        # Icon
+        ctk.CTkLabel(frame, text=icon, font=("Arial", 48),
+                    text_color=self.colors["accent"]).pack(pady=(20, 10))
+        
+        # Title
+        ctk.CTkLabel(frame, text=title, font=("Segoe UI", 18, "bold"),
+                    text_color=self.colors["text_primary"]).pack(pady=(0, 8))
+        
+        # Description
+        ctk.CTkLabel(frame, text=description, font=("Segoe UI", 12),
+                    text_color=self.colors["text_secondary"], wraplength=400,
+                    justify="center").pack()
+
+    def show_keyboard_shortcuts(self):
+        """Display keyboard shortcuts and tips in a modal dialog."""
+        win = ctk.CTkToplevel(self)
+        win.title("Keyboard Shortcuts & Tips")
+        win.geometry("600x700")
+        win.configure(fg_color=self.colors["bg_primary"])
+        win.grab_set()
+        win.attributes('-topmost', True)
+        
+        # Header
+        header = ctk.CTkFrame(win, fg_color=self.colors["bg_secondary"], corner_radius=8)
+        header.pack(fill="x", padx=16, pady=(16, 8))
+        
+        ctk.CTkLabel(header, text="⌨️ Tips & Features", font=("Segoe UI", 18, "bold"),
+                    text_color=self.colors["accent"]).pack(pady=12, padx=16)
+        
+        # Scrollable content
+        scroll_frame = ctk.CTkScrollableFrame(win, fg_color=self.colors["bg_secondary"], 
+                                             corner_radius=8)
+        scroll_frame.pack(fill="both", expand=True, padx=16, pady=8)
+        scroll_frame.grid_columnconfigure(0, weight=1)
+        
+        tips = [
+            ("📋 Copy Fields", "Click the copy button (📋) next to any field to copy its value"),
+            ("📊 Dashboard Tab", "View all asset movements and filter by status (IN/OUT)"),
+            ("🔧 Operations Tab", "Scan QR codes to perform quick inward/outward movements"),
+            ("📁 Asset Manager", "Register new articles with pricing and generate QR codes"),
+            ("📋 Billing Tab", "Track service jobs and manage TCR (Temporary Charge Record)"),
+            ("💾 Backup", "Click the backup button to export all data"),
+            ("🔍 Search", "Use search bars to filter transactions by ID, name, or engineer"),
+            ("🔄 Real-time Sync", "All changes are automatically saved to Excel"),
+            ("✓ Confirmations", "Critical operations require confirmation for safety"),
+            ("⚡ Toast Messages", "Look at top-right for success/error notifications"),
+            ("⬆️⬇️ Sort Tables", "Click column headers to sort table data"),
+        ]
+        
+        for i, (title, desc) in enumerate(tips):
+            tip_frame = ctk.CTkFrame(scroll_frame, fg_color=self.colors["bg_tertiary"],
+                                    corner_radius=8)
+            tip_frame.grid(row=i, column=0, sticky="ew", pady=8, padx=8)
+            tip_frame.grid_columnconfigure(0, weight=1)
+            
+            ctk.CTkLabel(tip_frame, text=title, font=("Segoe UI", 12, "bold"),
+                        text_color=self.colors["accent"]).pack(anchor="w", padx=12, pady=(10, 4))
+            
+            ctk.CTkLabel(tip_frame, text=desc, font=("Segoe UI", 11),
+                        text_color=self.colors["text_secondary"], wraplength=500,
+                        justify="left").pack(anchor="w", padx=12, pady=(0, 10))
+        
+        # Close button
+        ctk.CTkButton(win, text="Close", fg_color=self.colors["accent"],
+                     hover_color=self.colors["accent_hover"],
+                     command=win.destroy).pack(pady=12)
+
+    def setup_treeview_sorting(self, treeview, sort_column_map=None):
+        """Enable column sorting for Treeview widgets by clicking headers."""
+        if sort_column_map is None:
+            sort_column_map = {}
+        
+        self.sort_state = {}
+        
+        def heading_click(col):
+            # Get current items
+            items = [(treeview.set(k, col), k) for k in treeview.get_children('')]
+            
+            # Determine sort direction
+            reverse = self.sort_state.get(col, False)
+            
+            # Try to convert to numbers for numeric sorting
+            try:
+                items.sort(key=lambda x: float(x[0]), reverse=reverse)
+            except ValueError:
+                items.sort(key=lambda x: x[0], reverse=reverse)
+            
+            # Reorder items in tree
+            for index, (val, k) in enumerate(items):
+                treeview.move(k, '', index)
+            
+            # Toggle sort direction for next click
+            self.sort_state[col] = not reverse
+            
+            # Update heading to show sort indicator
+            indicator = " ▲" if reverse else " ▼"
+            for c in treeview['columns']:
+                if c == col:
+                    current_text = treeview.heading(c)['text']
+                    # Remove old indicator if exists
+                    current_text = current_text.replace(" ▲", "").replace(" ▼", "")
+                    treeview.heading(c, text=current_text + indicator)
+                else:
+                    current_text = treeview.heading(c)['text']
+                    current_text = current_text.replace(" ▲", "").replace(" ▼", "")
+                    treeview.heading(c, text=current_text)
+        
+        # Bind click to all column headers
+        for col in treeview['columns']:
+            treeview.heading(col, command=lambda c=col: heading_click(c))
 
     # --- 📁 ASSET MANAGER ---
     def init_assets_tab(self):
@@ -554,6 +805,9 @@ class ResQUltimateAdmin(ctk.CTk):
         self.master_tree.configure(yscroll=scrollbar.set)
         self.master_tree.pack(side="left", fill="both", expand=True, padx=10, pady=10)
         scrollbar.pack(side="right", fill="y", padx=(0, 10), pady=10)
+        
+        # Enable sorting on master asset table
+        self.setup_treeview_sorting(self.master_tree)
 
     # --- 📋 BILLING / TCR (post-OUTWARD) ---
     def init_billing_tab(self):
@@ -700,6 +954,9 @@ class ResQUltimateAdmin(ctk.CTk):
             pass
 
         self.billing_tree.bind("<Double-1>", lambda _e: self.edit_billing_selected())
+        
+        # Enable sorting on billing table
+        self.setup_treeview_sorting(self.billing_tree)
 
     def refresh_billing_tree(self):
         if not getattr(self, "billing_tree", None):
@@ -711,6 +968,8 @@ class ResQUltimateAdmin(ctk.CTk):
         except Exception:
             return
         if df is None or df.empty:
+            # Insert empty state row
+            self.billing_tree.insert("", "end", values=("No service jobs recorded yet. Complete an OUTWARD to create a billing record.", "", "", "", "", "", "", "", ""))
             return
 
         # Get search criteria
@@ -733,6 +992,12 @@ class ResQUltimateAdmin(ctk.CTk):
             if article_val:
                 df["Article_No"] = df["Article_No"].astype(str).str.strip()
                 df = df[df["Article_No"].str.contains(article_val, na=False)]
+        
+        # Check if filters resulted in empty
+        if df.empty:
+            Toast.show(self, "No records match your filter criteria", "info")
+            self.billing_tree.insert("", "end", values=("No matches found. Try adjusting your filters.", "", "", "", "", "", "", "", ""))
+            return
         
         def _money_show(val):
             if val is True or str(val).strip().lower() in ("true", "1", "yes", "y", "received", "paid"):
@@ -1120,16 +1385,26 @@ class ResQUltimateAdmin(ctk.CTk):
         self.details_card.grid_columnconfigure(1, weight=1)
 
         ctk.CTkLabel(self.details_card, text="📋 Scanned Item Details", font=("Segoe UI", 14, "bold"), text_color=self.colors["text_primary"]).grid(
-            row=0, column=0, columnspan=2, sticky="w", padx=16, pady=(14, 10)
+            row=0, column=0, columnspan=3, sticky="w", padx=16, pady=(14, 10)
         )
 
         def _row(r, k, icon=""):
+            """Create a detail row with value and copy button."""
             label_text = f"{icon} {k}" if icon else k
             ctk.CTkLabel(self.details_card, text=label_text, font=("Segoe UI", 11, "bold"), text_color=self.colors["text_secondary"]).grid(
                 row=r, column=0, sticky="w", padx=16, pady=8
             )
-            v = ctk.CTkLabel(self.details_card, text="-", font=("Segoe UI", 12), text_color=self.colors["text_primary"], anchor="w", justify="left", wraplength=600)
-            v.grid(row=r, column=1, sticky="ew", padx=(0, 16), pady=8)
+            v = ctk.CTkLabel(self.details_card, text="-", font=("Segoe UI", 12), text_color=self.colors["text_primary"], anchor="w", justify="left", wraplength=500)
+            v.grid(row=r, column=1, sticky="ew", padx=(0, 10), pady=8)
+            
+            # Copy button
+            copy_btn = ctk.CTkButton(self.details_card, text="📋", width=30, height=28,
+                                    fg_color=self.colors["bg_secondary"],
+                                    hover_color=self.colors["accent"],
+                                    corner_radius=6, font=("Arial", 12),
+                                    command=lambda val=v: self.copy_to_clipboard(val.cget("text")))
+            copy_btn.grid(row=r, column=2, sticky="e", padx=16, pady=8)
+            v.copy_button = copy_btn
             return v
 
         self.v_art = _row(1, "Article Code", "🏷️")
@@ -1474,33 +1749,73 @@ class ResQUltimateAdmin(ctk.CTk):
 
     # --- LOGIC HELPERS ---
     def save_article(self):
+        """Save a new article with visual feedback and validation."""
         try:
-            art, name = self.e_id.get(), self.e_name.get()
-            cp, sp = float(self.e_cp.get()), float(self.e_sp.get())
-            s, msg = engine.register_new_article(art, name, cp, sp)
-            if s:
-                # One QR per Article_No, mobile-readable (full details available at registration time)
-                # Invoice/Qty are not known at registration, so keep invoice as "-" and qty as 1.
-                self.last_qr_path = gen.generate_box_qr(
-                    art_no=art,
-                    part_name=name,
-                    tax_invoice_no="-",
-                    sp=sp,
-                    qty=1,
-                    sr_list=None,
-                )
-                messagebox.showinfo("OK", "Registered!"); self.refresh_all_data()
-                if self.last_qr_path and os.path.exists(self.last_qr_path):
-                    img = Image.open(self.last_qr_path).resize((130, 130))
-                    self.tk_qr = ImageTk.PhotoImage(img)
-                    self.qr_img_label.configure(image=self.tk_qr, text="")
-                    self.btn_open_qr.configure(state="normal", fg_color="#10b981")
-                    self.btn_direct_print.configure(state="normal", fg_color="#3b82f6")
-            else: messagebox.showerror("Err", msg)
-        except: messagebox.showerror("Err", "Prices must be numbers")
+            # Validate inputs
+            art = self.e_id.get().strip()
+            name = self.e_name.get().strip()
+            if not art or not name:
+                Toast.show(self, "Please fill in Article ID and Part Name", "warning")
+                return
+            
+            cp_str = self.e_cp.get().strip()
+            sp_str = self.e_sp.get().strip()
+            if not cp_str or not sp_str:
+                Toast.show(self, "Please enter Cost and Selling prices", "warning")
+                return
+            
+            cp, sp = float(cp_str), float(sp_str)
+            
+            # Show loading spinner in thread
+            spinner = LoadingSpinner(self, "Registering article...")
+            spinner.show()
+            
+            def register():
+                try:
+                    s, msg = engine.register_new_article(art, name, cp, sp)
+                    spinner.hide()
+                    
+                    if s:
+                        # Generate QR
+                        self.last_qr_path = gen.generate_box_qr(
+                            art_no=art,
+                            part_name=name,
+                            tax_invoice_no="-",
+                            sp=sp,
+                            qty=1,
+                            sr_list=None,
+                        )
+                        
+                        # Show success toast
+                        Toast.show(self, f"✓ Article '{art}' registered successfully!", "success")
+                        self.refresh_all_data()
+                        
+                        # Update QR preview
+                        if self.last_qr_path and os.path.exists(self.last_qr_path):
+                            img = Image.open(self.last_qr_path).resize((130, 130))
+                            self.tk_qr = ImageTk.PhotoImage(img)
+                            self.qr_img_label.configure(image=self.tk_qr, text="")
+                            self.btn_open_qr.configure(state="normal", fg_color="#10b981")
+                            self.btn_direct_print.configure(state="normal", fg_color="#3b82f6")
+                    else:
+                        Toast.show(self, f"Error: {msg}", "error")
+                except Exception as e:
+                    spinner.hide()
+                    Toast.show(self, f"Registration failed: {str(e)}", "error")
+            
+            threading.Thread(target=register, daemon=True).start()
+        except ValueError:
+            Toast.show(self, "Prices must be valid numbers", "error")
+        except Exception as e:
+            Toast.show(self, f"Error: {str(e)}", "error")
 
     def open_qr_file(self):
-        if self.last_qr_path: os.startfile(os.path.abspath(self.last_qr_path))
+        if self.last_qr_path:
+            try:
+                os.startfile(os.path.abspath(self.last_qr_path))
+                Toast.show(self, "QR file opened", "info")
+            except Exception as e:
+                Toast.show(self, f"Could not open QR: {str(e)}", "error")
 
     def direct_print_qr(self):
         """
@@ -1508,14 +1823,19 @@ class ResQUltimateAdmin(ctk.CTk):
         Note: Windows uses the default associated app for PNG printing.
         """
         if not self.last_qr_path:
+            Toast.show(self, "No QR code generated yet", "warning")
             return
         try:
             os.startfile(os.path.abspath(self.last_qr_path), "print")
+            Toast.show(self, "Print job sent to default printer", "success")
         except Exception as e:
             messagebox.showerror("Print Error", f"Could not print.\n{e}")
 
     def execute_move(self, t):
-        if not self.current_scanned_id: return messagebox.showwarning("!", "Scan QR First")
+        """Execute inward/outward movement with improved UI feedback."""
+        if not self.current_scanned_id:
+            Toast.show(self, "Scan QR first to proceed", "warning")
+            return
 
         # IN: allow multiple physical units via Qty -> Sr_No auto assignment
         if t.upper() == "IN":
@@ -1536,42 +1856,59 @@ class ResQUltimateAdmin(ctk.CTk):
             except Exception:
                 tax_invoice_no = ""
 
-            # Predict Sr_No allocation (matches engine auto allocation)
-            sr_list = engine.get_next_inward_sr_list(self.current_scanned_id, qty)
+            # Show confirmation dialog
+            if not messagebox.askyesno("Confirm Inward", f"Mark {qty} unit(s) as INWARD?\n\nArticle: {self.current_scanned_id}"):
+                return
 
-            s, m = engine.process_movement(
-                self.current_scanned_id,
-                t,
-                purchase_type=self.move_type_var.get(),
-                engineer=self.selected_engineer,
-                qty=qty,
-                tax_invoice_no=tax_invoice_no,
-            )
-            if s:
-                # Generate ONE box QR (mobile-readable) for the whole inward
-                details = engine.get_scan_details(self.current_scanned_id)
-                part = details.get("Part_Name", "")
-                sp = details.get("SP", None)
-                box_path = gen.generate_box_qr(self.current_scanned_id, part, tax_invoice_no, sp, qty, sr_list=sr_list)
-                if box_path:
-                    self.last_qr_path = box_path
-                    try:
-                        img = Image.open(self.last_qr_path).resize((130, 130))
-                        self.tk_qr = ImageTk.PhotoImage(img)
-                        self.qr_img_label.configure(image=self.tk_qr, text="")
-                        self.btn_open_qr.configure(state="normal", fg_color="#10b981")
-                        self.btn_direct_print.configure(state="normal", fg_color="#3b82f6")
-                    except Exception:
-                        pass
+            # Show loading spinner
+            spinner = LoadingSpinner(self, "Processing inward movement...")
+            spinner.show()
 
-                messagebox.showinfo("OK", m); self.refresh_all_data()
-            else: messagebox.showerror("Err", m)
+            def process_in():
+                try:
+                    sr_list = engine.get_next_inward_sr_list(self.current_scanned_id, qty)
+                    s, m = engine.process_movement(
+                        self.current_scanned_id,
+                        t,
+                        purchase_type=self.move_type_var.get(),
+                        engineer=self.selected_engineer,
+                        qty=qty,
+                        tax_invoice_no=tax_invoice_no,
+                    )
+                    spinner.hide()
+                    
+                    if s:
+                        details = engine.get_scan_details(self.current_scanned_id)
+                        part = details.get("Part_Name", "")
+                        sp = details.get("SP", None)
+                        box_path = gen.generate_box_qr(self.current_scanned_id, part, tax_invoice_no, sp, qty, sr_list=sr_list)
+                        if box_path:
+                            self.last_qr_path = box_path
+                            try:
+                                img = Image.open(self.last_qr_path).resize((130, 130))
+                                self.tk_qr = ImageTk.PhotoImage(img)
+                                self.qr_img_label.configure(image=self.tk_qr, text="")
+                                self.btn_open_qr.configure(state="normal", fg_color="#10b981")
+                                self.btn_direct_print.configure(state="normal", fg_color="#3b82f6")
+                            except Exception:
+                                pass
+
+                        Toast.show(self, f"✓ {qty} unit(s) marked as INWARD", "success")
+                        self.refresh_all_data()
+                    else:
+                        Toast.show(self, f"Inward failed: {m}", "error")
+                except Exception as e:
+                    spinner.hide()
+                    Toast.show(self, f"Error: {str(e)}", "error")
+            
+            threading.Thread(target=process_in, daemon=True).start()
             return
 
         # OUT: if multiple units IN, ask Sr_No to outward specific unit
         if t.upper() == "OUT":
             if not self.selected_engineer:
-                return messagebox.showwarning("!", "Select Engineer First")
+                Toast.show(self, "Select an Engineer first", "warning")
+                return
 
             available = engine.get_available_sr_nos(self.current_scanned_id)
             sr_no = None
@@ -1584,25 +1921,64 @@ class ResQUltimateAdmin(ctk.CTk):
                         title="Select Sr No",
                     )
                     v = (d.get_input() or "").strip()
-                    sr_no = int(v) if v else (sr_no if sr_no is not None else available[0])  # auto-pick
+                    sr_no = int(v) if v else (sr_no if sr_no is not None else available[0])
                 except Exception:
                     sr_no = sr_no if sr_no is not None else available[0]
             elif len(available) == 1:
                 sr_no = available[0]
 
-            s, m = engine.process_movement(
-                self.current_scanned_id,
-                t,
-                purchase_type=self.move_type_var.get(),
-                engineer=self.selected_engineer,
-                sr_no=sr_no,
-            )
-            if s: messagebox.showinfo("OK", m); self.refresh_all_data()
-            else: messagebox.showerror("Err", m)
+            # Show confirmation
+            if not messagebox.askyesno("Confirm Outward", f"Mark unit as OUTWARD to {self.selected_engineer}?\n\nArticle: {self.current_scanned_id}\nSr No: {sr_no}"):
+                return
+
+            spinner = LoadingSpinner(self, "Processing outward movement...")
+            spinner.show()
+
+            def process_out():
+                try:
+                    s, m = engine.process_movement(
+                        self.current_scanned_id,
+                        t,
+                        purchase_type=self.move_type_var.get(),
+                        engineer=self.selected_engineer,
+                        sr_no=sr_no,
+                    )
+                    spinner.hide()
+                    
+                    if s:
+                        Toast.show(self, "✓ Unit marked as OUTWARD", "success")
+                        self.refresh_all_data()
+                    else:
+                        Toast.show(self, f"Outward failed: {m}", "error")
+                except Exception as e:
+                    spinner.hide()
+                    Toast.show(self, f"Error: {str(e)}", "error")
+            
+            threading.Thread(target=process_out, daemon=True).start()
             return
 
-        s, m = engine.process_movement(self.current_scanned_id, t, purchase_type=self.move_type_var.get(), engineer=self.selected_engineer)
-        if s: messagebox.showinfo("OK", m); self.refresh_all_data()
+        # Default movement
+        if not messagebox.askyesno("Confirm Movement", f"Process movement for {self.current_scanned_id}?"):
+            return
+        
+        spinner = LoadingSpinner(self, "Processing movement...")
+        spinner.show()
+        
+        def process():
+            try:
+                s, m = engine.process_movement(self.current_scanned_id, t, purchase_type=self.move_type_var.get(), engineer=self.selected_engineer)
+                spinner.hide()
+                
+                if s:
+                    Toast.show(self, "✓ Movement processed", "success")
+                    self.refresh_all_data()
+                else:
+                    Toast.show(self, f"Movement failed: {m}", "error")
+            except Exception as e:
+                spinner.hide()
+                Toast.show(self, f"Error: {str(e)}", "error")
+        
+        threading.Thread(target=process, daemon=True).start()
 
     def run_scan(self):
         res, _ = scanner.activate_scanner()
