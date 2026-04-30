@@ -191,6 +191,19 @@ class ResQUltimateAdmin(ctk.CTk):
         self.create_nav_btn("📁", "Asset Manager")
         self.create_nav_btn("📋", "Billing / TCR")
 
+         # Replace and Return button
+        ctk.CTkButton(
+            self.sidebar,
+            text="🔄",
+            width=65,
+            height=65,
+            fg_color="transparent",
+            font=("Arial", 26),
+            hover_color=self.colors["bg_tertiary"],
+            command=self.refresh_all_data,
+            
+        ).pack(pady=12)
+
         # Help button
         ctk.CTkButton(
             self.sidebar,
@@ -202,6 +215,7 @@ class ResQUltimateAdmin(ctk.CTk):
             hover_color=self.colors["bg_tertiary"],
             command=self.show_keyboard_shortcuts,
         ).pack(pady=12)
+
 
         # Backup/Export button always visible in sidebar
         ctk.CTkButton(
