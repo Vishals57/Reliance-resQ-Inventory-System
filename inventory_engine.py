@@ -994,6 +994,7 @@ def remove_engineer(name: str):
     name = "" if name is None else str(name).strip()
     if not name:
         return False, "Engineer name is required."
+    
 
     try:
         df = pd.read_excel(DB_FILE, sheet_name=ENGINEER_SHEET, dtype=str, engine="openpyxl")
